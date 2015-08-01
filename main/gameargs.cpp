@@ -81,13 +81,11 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "cvar.h"
 #include "lightcluster.h"
 
-void PrintVersion (void);
-
 // ----------------------------------------------------------------------------
 
 void EvalAutoNetGameArgs (void)
 {
-	int	t, bHaveIp = 0;
+	int32_t	t, bHaveIp = 0;
 	char	*p;
 #if 0
 	static const char *pszTypes [] = {"anarchy", "coop", "ctf", "ctf+", "hoard", "entropy", NULL};
@@ -175,7 +173,7 @@ EvalAutoNetGameArgs ();
 
 void EvalMovieArgs (void)
 {
-	int	t;
+	int32_t	t;
 
 if ((t = FindArg ("-nomovies")))
 	gameOptions [0].movies.nLevel = 2 - NumArg (t, 2);
@@ -197,7 +195,7 @@ if (gameData.multiplayer.autoNG.bValid > 0)
 
 void EvalSoundArgs (void)
 {
-	int	t;
+	int32_t	t;
 
 #if USE_SDL_MIXER
 #	ifdef __macosx__
@@ -217,6 +215,10 @@ if ((t = FindArg ("-sdl_mixer")))
 #endif //USE_SDL_MIXER
 if ((t = FindArg ("-midifix")))
 	gameStates.sound.bMidiFix = NumArg (t, 1);
+if ((t = FindArg ("-dynamic_sound")))
+	gameStates.sound.bDynamic = NumArg (t, 1);
+else
+	gameStates.sound.bDynamic = 1;
 if ((t = FindArg ("-noredbook")))
 	gameOptions [0].sound.bUseRedbook = 0;
 #if USE_SDL_MIXER
@@ -232,13 +234,13 @@ if (gameOptions [0].sound.bUseSDLMixer) {
 
 void EvalMusicArgs (void)
 {
-	int	t;
+	int32_t	t;
 	char	*p;
 
 if ((t = FindArg ("-nomusic")))
 	gameStates.sound.audio.bNoMusic = NumArg (t, 0) == 0;
 if ((t = FindArg ("-playlist")) && (p = appConfig [t+1]))
-	songManager.LoadPlayList (p);
+	songManager.LoadUserPlaylist (p);
 if ((t = FindArg ("-introsong")) && (p = appConfig [t+1]))
 	strncpy (songManager.IntroSong (), p, FILENAME_LEN);
 if ((t = FindArg ("-briefingsong")) && (p = appConfig [t+1]))
@@ -253,7 +255,7 @@ if ((t = FindArg ("-menusong")) && (p = appConfig [t+1]))
 
 void EvalMenuArgs (void)
 {
-	int	t;
+	int32_t	t;
 
 if (!gameStates.app.bNostalgia) {
 	if ((t = FindArg ("-menustyle")))
@@ -277,6 +279,8 @@ if ((t = FindArg ("-altbg_brightness")) && *appConfig [t+1]) {
 	}
 if ((t = FindArg ("-altbg_grayscale")))
 	gameOptions [0].menus.altBg.grayscale = NumArg (t, 1);
+if ((t = FindArg ("-altbg_cartoonize")))
+	gameOptions [0].menus.altBg.bCartoonize = NumArg (t, 1);
 if ((t = FindArg ("-altbg_name")) && *appConfig [t+1])
 	strncpy (gameOptions [0].menus.altBg.szName [0], appConfig [t+1], sizeof (gameOptions [0].menus.altBg.szName [0]));
 if ((t = FindArg ("-use_swapfile")))
@@ -287,7 +291,7 @@ if ((t = FindArg ("-use_swapfile")))
 
 void EvalGameplayArgs (void)
 {
-	int	t;
+	int32_t	t;
 
 if ((t = FindArg ("-briefings")))
 	gameOpts->gameplay.bSkipBriefingScreens = !NumArg (t, 1);
@@ -305,7 +309,7 @@ if ((t = FindArg ("-disable_powerups")) && NumArg (t, 1))
 
 void EvalInputArgs (void)
 {
-	int	t;
+	int32_t	t;
 
 if ((t = FindArg ("-grabmouse")))
 	gameStates.input.bGrabMouse = NumArg (t, 1);
@@ -315,18 +319,23 @@ if ((t = FindArg ("-grabmouse")))
 
 void EvalOglArgs (void)
 {
-	int	t;
+	int32_t	t;
 
 #if DBG
 if ((t = FindArg ("-gl_alttexmerge")))
 	gameOpts->ogl.bGlTexMerge = NumArg (t, 1);
 #endif
+#if 0 
+// lowmem only really makes senes together with limiting texture preloading
 if ((t = FindArg ("-lowmem")))
 	ogl.m_states.bLowMemory = NumArg (t, 1);
+// this parameter can lead to the game briefly pausing everytime a new weapon, robot etc. becomes visible
+// that is very annoying and not immediately understandable to players
 if ((t = FindArg ("-preload_textures")))
-	ogl.m_states.nPreloadTextures = NumArg (t, 3);
+	ogl.m_states.nPreloadTextures = NumArg (t, 6);
 else
-	ogl.m_states.nPreloadTextures = 5;
+#endif
+	ogl.m_states.nPreloadTextures = 6;
 if ((t = FindArg ("-FSAA")))
 	ogl.m_states.bFSAA = NumArg (t, 1);
 if ((t = FindArg ("-quad_buffering")))
@@ -337,7 +346,7 @@ if ((t = FindArg ("-quad_buffering")))
 
 void EvalDemoArgs (void)
 {
-	int	t;
+	int32_t	t;
 
 if ((t = FindArg ("-revert_demos")))
 	gameOpts->demo.bRevertFormat = NumArg (t, 1);
@@ -349,7 +358,7 @@ if ((t = FindArg ("-auto_demos")))
 
 void EvalRenderArgs (void)
 {
-	int	t;
+	int32_t	t;
 
 if ((t = FindArg ("-hires_textures")))
 	gameOptions [0].render.textures.bUseHires [0] =
@@ -363,6 +372,8 @@ if ((t = FindArg ("-model_quality")) && *appConfig [t+1])
 if ((t = FindArg ("-gl_texcompress")))
 	ogl.m_features.bTextureCompression.Apply (NumArg (t, 1));
 #endif
+if ((t = FindArg ("-configure_light_components")))
+	gameOptions [0].render.color.bConfigurable = NumArg (t, 1);
 gameOptions [0].render.bUseShaders = 1;
 gameStates.app.bReadOnly = 0;
 gameStates.app.bCacheTextures = 1;
@@ -396,6 +407,8 @@ if ((t = FindArg ("-use_shaders")))
 	gameOptions [0].render.bUseShaders = NumArg (t, 1);
 if ((t = FindArg ("-enable_freecam")))
 	gameStates.render.bEnableFreeCam = NumArg (t, 1);
+if ((t = FindArg ("-oculus_rift")))
+	gameOptions [0].render.bUseRift = NumArg (t, 1);
 }
 
 // ----------------------------------------------------------------------------
@@ -403,14 +416,14 @@ if ((t = FindArg ("-enable_freecam")))
 void EvalShipArgs (void)
 {
 	const char*	szShipArgs [] = {"-medium_ship", "-light_ship", "-heavy_ship"};
-	int	t;
+	int32_t	t;
 	char	*p;
 
-for (int i = 0; i < MAX_SHIP_TYPES; i++) {
+for (int32_t i = 0; i < MAX_SHIP_TYPES; i++) {
 	if ((t = FindArg (szShipArgs [i])) && (p = appConfig [t+1]) && *p) {
-		strncpy (gameData.models.szShipModels [i], appConfig [t+1], FILENAME_LEN);
-		strlwr (gameData.models.szShipModels [i]);
-		replacementModels [i].pszHires = gameData.models.szShipModels [i];
+		strncpy (gameData.modelData.szShipModels [i], appConfig [t+1], FILENAME_LEN);
+		strlwr (gameData.modelData.szShipModels [i]);
+		replacementModels [i].pszHires = gameData.modelData.szShipModels [i];
 		}
 	}
 }
@@ -419,7 +432,7 @@ for (int i = 0; i < MAX_SHIP_TYPES; i++) {
 
 void EvalAppArgs (void)
 {
-	int	t;
+	int32_t	t;
 
 #if 0
 if ((t = FindArg ("-gpgpu_lights")))
@@ -461,12 +474,15 @@ if ((t = FindArg ("-multithreaded"))) {
 		gameStates.app.nThreads = MAX_THREADS;
 	}
 else 
-#else
+#endif
 	{
 	gameStates.app.nThreads = 1;
 	gameStates.app.bMultiThreaded = 0;
 	}
-#endif
+if ((t = FindArg ("-tracelevel")))
+	gameStates.app.nTraceLevel = NumArg (t, 0);
+else
+	gameStates.app.nTraceLevel = 0;
 if ((t = FindArg ("-nosound")))
 	gameStates.app.bUseSound = (NumArg (t, 1) == 0);
 if ((t = FindArg ("-progress_bars")))
@@ -482,7 +498,7 @@ if ((t = FindArg ("-auto_hogfile"))) {
 	}
 if ((t = FindArg ("-auto_mission"))) {
 	char	c = *appConfig [++t];
-	int		bDelim = ((c == '\'') || (c == '"'));
+	int32_t		bDelim = ((c == '\'') || (c == '"'));
 
 	strcpy (szAutoMission, &appConfig [t][bDelim]);
 	if (bDelim)
@@ -497,18 +513,20 @@ else if (FindArg ("-verbose"))
 else
 	CCvar::Register (const_cast<char*>("con_threshold"), -1.0);
 if ((t = FindArg ("-autodemo"))) {
-	gameData.demo.bAuto = 1;
-	strncpy (gameData.demo.fnAuto, *appConfig [t+1] ? appConfig [t+1] : "descent.dem", sizeof (gameData.demo.fnAuto));
+	gameData.demoData.bAuto = 1;
+	strncpy (gameData.demoData.fnAuto, *appConfig [t+1] ? appConfig [t+1] : "descent.dem", sizeof (gameData.demoData.fnAuto));
 	}
 else
-	gameData.demo.bAuto = 0;
+	gameData.demoData.bAuto = 0;
 gameStates.app.bMacData = FindArg ("-macdata");
-if ((t = FindArg ("-compress_data")))
+if ((t = FindArg ("-compress_data"))) {
 	gameStates.app.bCompressData = (NumArg (t, 1) == 1);
+	PrintLog (0, "gameStates.app.bCompressData = 1\n");
+	}
 else
-	gameStates.app.bCompressData = 0;
+	gameStates.app.bCompressData = 1;
 if (gameStates.app.bNostalgia)
-	gameData.segs.nMaxSegments = MAX_SEGMENTS_D2;
+	gameData.segData.nMaxSegments = MAX_SEGMENTS_D2;
 }
 
 // ----------------------------------------------------------------------------

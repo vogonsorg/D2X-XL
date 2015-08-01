@@ -56,21 +56,22 @@
 
 static const char *pszAggressivities [6];
 static const char *pszWeaponSwitch [3];
+static const char *pszSpeed [3];
 
-void DefaultGameplaySettings (void);
+void DefaultGameplaySettings (bool bSetup = false);
 
 //------------------------------------------------------------------------------
 
 static const char *pszGuns [] = {"Laser", "Vulcan", "Spreadfire", "Plasma", "Fusion", "Super Laser", "Gauss", "Helix", "Phoenix", "Omega"};
 static const char *pszDevices [] = {"Full Map", "Ammo Rack", "Converter", "Quad Lasers", "Afterburner", "Headlight", "Slow Motion", "Bullet Time"};
-static int nDeviceFlags [] = {PLAYER_FLAGS_FULLMAP, PLAYER_FLAGS_AMMO_RACK, PLAYER_FLAGS_CONVERTER, PLAYER_FLAGS_QUAD_LASERS,
-										PLAYER_FLAGS_AFTERBURNER, PLAYER_FLAGS_HEADLIGHT, PLAYER_FLAGS_SLOWMOTION, PLAYER_FLAGS_BULLETTIME};
+static int32_t nDeviceFlags [] = {PLAYER_FLAGS_FULLMAP, PLAYER_FLAGS_AMMO_RACK, PLAYER_FLAGS_CONVERTER, PLAYER_FLAGS_QUAD_LASERS,
+											 PLAYER_FLAGS_AFTERBURNER, PLAYER_FLAGS_HEADLIGHT, PLAYER_FLAGS_SLOWMOTION, PLAYER_FLAGS_BULLETTIME};
 
-static int optGuns, optDevices;
+static int32_t optGuns, optDevices;
 
 //------------------------------------------------------------------------------
 
-static inline void SetGunLoadoutFlag (int i, int v)
+static inline void SetGunLoadoutFlag (int32_t i, int32_t v)
 {
 if (v)
 	extraGameInfo [0].loadout.nGuns |= (1 << i);
@@ -80,14 +81,14 @@ else
 
 //------------------------------------------------------------------------------
 
-static inline int GetGunLoadoutFlag (int i)
+static inline int32_t GetGunLoadoutFlag (int32_t i)
 {
 return (extraGameInfo [0].loadout.nGuns & (1 << i)) != 0;
 }
 
 //------------------------------------------------------------------------------
 
-static inline void SetDeviceLoadoutFlag (int i, int v)
+static inline void SetDeviceLoadoutFlag (int32_t i, int32_t v)
 {
 if (v)
 	extraGameInfo [0].loadout.nDevice |= nDeviceFlags [i];
@@ -97,20 +98,20 @@ else
 
 //------------------------------------------------------------------------------
 
-static inline int GetDeviceLoadoutFlag (int i)
+static inline int32_t GetDeviceLoadoutFlag (int32_t i)
 {
 return (extraGameInfo [0].loadout.nDevice & nDeviceFlags [i]) != 0;
 }
 
 //------------------------------------------------------------------------------
 
-int LoadoutCallback (CMenu& menu, int& key, int nCurItem, int nState)
+int32_t LoadoutCallback (CMenu& menu, int32_t& key, int32_t nCurItem, int32_t nState)
 {
 if (nState)
 	return nCurItem;
 
 	CMenuItem	*m = menu + nCurItem;
-	int			v = m->Value ();
+	int32_t			v = m->Value ();
 
 if (nCurItem == menu.IndexOf (pszGuns [0])) {	//checked/unchecked lasers
 	if (v != GetGunLoadoutFlag (0)) {
@@ -155,17 +156,17 @@ return nCurItem;
 
 void LoadoutOptionsMenu (void)
 {
-	static int choice = 0;
+	static int32_t choice = 0;
 
 	CMenu	m (25);
-	int	i, j, nOptions = 0;
+	int32_t	i, j, nOptions = 0;
 
 m.AddText ("", TXT_GUN_LOADOUT, 0);
-for (i = 0; i < (int) sizeofa (pszGuns); i++, nOptions++)
+for (i = 0; i < (int32_t) sizeofa (pszGuns); i++, nOptions++)
 	m.AddCheck (pszGuns [i], pszGuns [i], (extraGameInfo [0].loadout.nGuns & (1 << i)) != 0, 0, HTX_GUN_LOADOUT);
 m.AddText ("", "");
 m.AddText ("", TXT_DEVICE_LOADOUT, 0);
-for (i = 0; i < (int) sizeofa (pszDevices); i++, nOptions++)
+for (i = 0; i < (int32_t) sizeofa (pszDevices); i++, nOptions++)
 	m.AddCheck (pszDevices [i], pszDevices [i], (extraGameInfo [0].loadout.nDevice & (nDeviceFlags [i])) != 0, 0, HTX_DEVICE_LOADOUT);
 
 do {
@@ -173,13 +174,13 @@ do {
 	} while (i != -1);
 
 extraGameInfo [0].loadout.nGuns = 0;
-for (i = 0, j = m.IndexOf (pszGuns [0]); i < (int) sizeofa (pszGuns); i++) {
+for (i = 0, j = m.IndexOf (pszGuns [0]); i < (int32_t) sizeofa (pszGuns); i++) {
 	if (m [j + i].Value ())
 		extraGameInfo [0].loadout.nGuns |= (1 << i);
 	}
 
 extraGameInfo [0].loadout.nDevice = 0;
-for (i = 0, j = m.IndexOf (pszDevices [0]); i < (int) sizeofa (pszDevices); i++) {
+for (i = 0, j = m.IndexOf (pszDevices [0]); i < (int32_t) sizeofa (pszDevices); i++) {
 	if (m [j + i].Value ())
 		extraGameInfo [0].loadout.nDevice |= nDeviceFlags [i];
 	}
@@ -189,15 +190,15 @@ AddPlayerLoadout ();
 
 //------------------------------------------------------------------------------
 
-static int nAIAggressivity;
+static int32_t nAIAggressivity;
 
-int GameplayOptionsCallback (CMenu& menu, int& key, int nCurItem, int nState)
+int32_t GameplayOptionsCallback (CMenu& menu, int32_t& key, int32_t nCurItem, int32_t nState)
 {
 if (nState)
 	return nCurItem;
 
 	CMenuItem*	m;
-	int			v;
+	int32_t			v;
 
 if ((m = menu ["difficulty"])) {
 	v = m->Value ();
@@ -205,7 +206,7 @@ if ((m = menu ["difficulty"])) {
 		gameStates.app.nDifficultyLevel = v;
 		if (!IsMultiGame) {
 			gameStates.app.nDifficultyLevel = v;
-			gameData.bosses.InitGateIntervals ();
+			gameData.bossData.InitGateIntervals ();
 			}
 		sprintf (m->m_text, TXT_DIFFICULTY2, MENU_DIFFICULTY_TEXT (gameStates.app.nDifficultyLevel));
 		m->m_bRebuild = 1;
@@ -230,14 +231,41 @@ if ((m = menu ["weapon switch"])) {
 		}
 	}
 
+if ((m = menu ["recharge energy"])) {
+	v = m->Value ();
+	if (extraGameInfo [0].bRechargeEnergy != v) {
+		extraGameInfo [0].bRechargeEnergy = v;
+		m->m_bRebuild = 1;
+		key = -2;
+		}
+	}
+
+if ((m = menu ["recharge delay"])) {
+	v = m->Value ();
+	if (extraGameInfo [0].nRechargeDelay != v) {
+		extraGameInfo [0].nRechargeDelay = v;
+		sprintf (m->m_text, TXT_RECHARGE_DELAY, CShipEnergy::RechargeDelay (extraGameInfo [0].nRechargeDelay) / 1000);
+		m->m_bRebuild = 1;
+		}
+	}
+
+if ((m = menu ["recharge speed"])) {
+	v = m->Value ();
+	if (extraGameInfo [0].nRechargeSpeed != v) {
+		extraGameInfo [0].nRechargeSpeed = v;
+		sprintf (m->m_text, TXT_RECHARGE_SPEED, pszSpeed [extraGameInfo [0].nRechargeSpeed]);
+		m->m_bRebuild = 1;
+		}
+	}
+
 return nCurItem;
 }
 
 //------------------------------------------------------------------------------
 
-void AddShipSelection (CMenu& m, int& optShip)
+void AddShipSelection (CMenu& m, int32_t& optShip)
 {
-	int h, i;
+	int32_t h, i;
 
 for (h = i = 0; i < 3; i++) {
 	if (missionConfig.m_shipsAllowed [i])
@@ -265,10 +293,10 @@ else { // more than one ship to chose from
 
 //------------------------------------------------------------------------------
 
-void GetShipSelection (CMenu& m, int& optShip)
+void GetShipSelection (CMenu& m, int32_t& optShip)
 {
 if (optShip >= 0) {
-	for (int i = 0, j = -1; i < MAX_SHIP_TYPES; i++) {
+	for (int32_t i = 0, j = -1; i < MAX_SHIP_TYPES; i++) {
 		if (missionConfig.m_shipsAllowed [i]) {
 			if (m [optShip + ++j].Value ()) {
 				gameOpts->gameplay.nShip [1] = i;
@@ -299,19 +327,24 @@ pszAggressivities [5] = TXT_EXTREME;
 pszWeaponSwitch [0] = TXT_NEVER;
 pszWeaponSwitch [1] = TXT_WHEN_EMPTY;
 pszWeaponSwitch [2] = TXT_CHOSE_BEST;
+
+pszSpeed [0] = TXT_FAST;
+pszSpeed [1] = TXT_MEDIUM;
+pszSpeed [2] = TXT_SLOW;
 }
 
 //------------------------------------------------------------------------------
 
 void GameplayOptionsMenu (void)
 {
-	static int choice = 0;
+	static int32_t choice = 0;
 
 	CMenu m;
-	int	i;
-	int	optShip = -1;
-	int	nShip = (gameOpts->gameplay.nShip [0] < 0) ? 0 : gameOpts->gameplay.nShip [0];
-	char	szSlider [50];
+	int32_t	i;
+	int32_t	optShip = -1;
+	int32_t	nShip = (gameOpts->gameplay.nShip [0] < 0) ? 0 : gameOpts->gameplay.nShip [0];
+	char		szSlider [50];
+	bool		bRestricted = gameStates.app.bGameRunning && IsMultiGame && !IsCoopGame;
 
 InitStrings ();
 
@@ -320,13 +353,15 @@ do {
 	m.Destroy ();
 	m.Create (20);
 
-	sprintf (szSlider + 1, TXT_DIFFICULTY2, MENU_DIFFICULTY_TEXT (gameStates.app.nDifficultyLevel));
-	*szSlider = *(TXT_DIFFICULTY2 - 1);
-	m.AddSlider ("difficulty", szSlider + 1, gameStates.app.nDifficultyLevel, 0, 4, KEY_D, HTX_GPLAY_DIFFICULTY);
+	if (!bRestricted) {
+		sprintf (szSlider + 1, TXT_DIFFICULTY2, MENU_DIFFICULTY_TEXT (gameStates.app.nDifficultyLevel));
+		*szSlider = *(TXT_DIFFICULTY2 - 1);
+		m.AddSlider ("difficulty", szSlider + 1, gameStates.app.nDifficultyLevel, 0, 4, KEY_D, HTX_GPLAY_DIFFICULTY);
 
-	sprintf (szSlider + 1, TXT_AI_AGGRESSIVITY, pszAggressivities [nAIAggressivity]);
-	*szSlider = *(TXT_AI_AGGRESSIVITY - 1);
-	m.AddSlider ("ai aggressivity", szSlider + 1, nAIAggressivity, 0, 5, KEY_A, HTX_AI_AGGRESSIVITY);
+		sprintf (szSlider + 1, TXT_AI_AGGRESSIVITY, pszAggressivities [nAIAggressivity]);
+		*szSlider = *(TXT_AI_AGGRESSIVITY - 1);
+		m.AddSlider ("ai aggressivity", szSlider + 1, nAIAggressivity, 0, 5, KEY_A, HTX_AI_AGGRESSIVITY);
+		}
 
 	sprintf (szSlider + 1, TXT_WEAPON_SWITCH, pszWeaponSwitch [gameOpts->gameplay.nAutoSelectWeapon]);
 	*szSlider = *(TXT_WEAPON_SWITCH - 1);
@@ -334,26 +369,42 @@ do {
 
 	m.AddText ("", "");
 	m.AddCheck ("smart weapon switch", TXT_SMART_WPNSWITCH, extraGameInfo [0].bSmartWeaponSwitch, KEY_M, HTX_GPLAY_SMARTSWITCH);
-	m.AddCheck ("headlight drains power", TXT_HEADLIGHT_POWERDRAIN, extraGameInfo [0].headlight.bDrainPower, KEY_O, HTX_HEADLIGHT_POWERDRAIN);
-	m.AddCheck ("suppress thief", TXT_SUPPRESS_THIEF, gameOpts->gameplay.bNoThief, KEY_T, HTX_SUPPRESS_THIEF);
-	m.AddCheck ("use inventory", TXT_USE_INVENTORY, gameOpts->gameplay.bInventory, KEY_U, HTX_GPLAY_INVENTORY);
-	m.AddCheck ("spinup gatling", TXT_SPINUP_GATLING, extraGameInfo [0].bGatlingSpeedUp, KEY_G, HTX_SPINUP_GATLING);
-	if (!gameStates.app.bGameRunning)
-		m.AddCheck ("allow custom weapons", TXT_ALLOW_CUSTOM_WEAPONS, extraGameInfo [0].bAllowCustomWeapons, KEY_C, HTX_ALLOW_CUSTOM_WEAPONS);
+	if (!bRestricted) {
+		m.AddCheck ("headlight drains power", TXT_HEADLIGHT_POWERDRAIN, extraGameInfo [0].headlight.bDrainPower, KEY_O, HTX_HEADLIGHT_POWERDRAIN);
+		m.AddCheck ("suppress thief", TXT_SUPPRESS_THIEF, gameOpts->gameplay.bNoThief, KEY_T, HTX_SUPPRESS_THIEF);
+		}
+	m.AddCheck ("observer mode", TXT_OBSERVER_MODE, gameOpts->gameplay.bObserve, KEY_B, HTX_OBSERVER_MODE);
+	if (!bRestricted) {
+		m.AddCheck ("use inventory", TXT_USE_INVENTORY, gameOpts->gameplay.bInventory, KEY_U, HTX_GPLAY_INVENTORY);
+		m.AddCheck ("spinup gatling", TXT_SPINUP_GATLING, extraGameInfo [0].bGatlingSpeedUp, KEY_G, HTX_SPINUP_GATLING);
+		if (!gameStates.app.bGameRunning)
+			m.AddCheck ("allow custom weapons", TXT_ALLOW_CUSTOM_WEAPONS, extraGameInfo [0].bAllowCustomWeapons, KEY_C, HTX_ALLOW_CUSTOM_WEAPONS);
+		m.AddCheck ("recharge energy", TXT_RECHARGE_ENERGY, extraGameInfo [0].bRechargeEnergy, KEY_R, HTX_RECHARGE_ENERGY);
+		if (extraGameInfo [0].bRechargeEnergy) {
+			if (gameOpts->app.bExpertMode == SUPERUSER) {
+				sprintf (szSlider + 1, TXT_RECHARGE_DELAY, CShipEnergy::RechargeDelay (extraGameInfo [0].nRechargeDelay) / 1000);
+				*szSlider = *(TXT_RECHARGE_DELAY - 1);
+				m.AddSlider ("recharge delay", szSlider + 1, extraGameInfo [0].nRechargeDelay, 0, CShipEnergy::RechargeDelayCount () - 1, KEY_Y, HTX_RECHARGE_DELAY);
+				sprintf (szSlider + 1, TXT_RECHARGE_SPEED, pszSpeed [extraGameInfo [0].nRechargeSpeed]);
+				*szSlider = *(TXT_RECHARGE_SPEED - 1);
+				m.AddSlider ("recharge speed", szSlider + 1, extraGameInfo [0].nRechargeSpeed, 0, 2, KEY_S, HTX_RECHARGE_SPEED);
+				}
+			}
+		}
 	m.AddText ("", "");
 	m.AddMenu ("reorder guns", TXT_PRIMARY_PRIO, KEY_P, HTX_OPTIONS_PRIMPRIO);
 	m.AddMenu ("reorder missiles", TXT_SECONDARY_PRIO, KEY_E, HTX_OPTIONS_SECPRIO);
 	//if (gameStates.app.bGameRunning)
 		AddShipSelection (m, optShip);
-	if (!(gameStates.app.bGameRunning && IsMultiGame && !IsCoopGame)) {
+	if (!bRestricted) {
 		m.AddText ("", "");
-		m.AddMenu ("loadout options", TXT_LOADOUT_OPTION, KEY_B, HTX_MULTI_LOADOUT);
+		m.AddMenu ("loadout options", TXT_LOADOUT_OPTION, KEY_Q, HTX_MULTI_LOADOUT);
 		}
 
 	for (;;) {
 		if (0 > (i = m.Menu (NULL, TXT_GAMEPLAY_OPTS, GameplayOptionsCallback, &choice)))
 			break;
-		if (choice == m.IndexOf ("loadout options"))
+		if (!bRestricted && (choice == m.IndexOf ("loadout options")))
 			LoadoutOptionsMenu ();
 		else if (choice == m.IndexOf ("reorder guns"))
 			ReorderPrimary ();
@@ -362,28 +413,33 @@ do {
 		}
 	} while (i == -2);
 
-if (nAIAggressivity == 5) {
-	gameOpts->gameplay.nAIAwareness = 1;
-	gameOpts->gameplay.nAIAggressivity = 4;
-	}
-else {
-	gameOpts->gameplay.nAIAwareness = 0;
-	gameOpts->gameplay.nAIAggressivity = nAIAggressivity;
+if (!bRestricted) {
+	if (nAIAggressivity == 5) {
+		gameOpts->gameplay.nAIAwareness = 1;
+		gameOpts->gameplay.nAIAggressivity = 4;
+		}
+	else {
+		gameOpts->gameplay.nAIAwareness = 0;
+		gameOpts->gameplay.nAIAggressivity = nAIAggressivity;
+		}
 	}
 
 extraGameInfo [0].bSmartWeaponSwitch = m.Value ("smart weapon switch");
-GET_VAL (gameOpts->gameplay.bInventory, "use inventory");
+if (!bRestricted)
+	GET_VAL (gameOpts->gameplay.bInventory, "use inventory");
 GET_VAL (gameOpts->gameplay.bNoThief, "suppress thief");
-GET_VAL (extraGameInfo [0].headlight.bDrainPower, "headlight drains power");
-GET_VAL (extraGameInfo [0].bGatlingSpeedUp, "spinup gatling");
-if (!gameStates.app.bGameRunning) {
-	GET_VAL (extraGameInfo [0].bAllowCustomWeapons, "allow custom weapons");
-	extraGameInfo [1].bAllowCustomWeapons = extraGameInfo [0].bAllowCustomWeapons;
-	if (!extraGameInfo [0].bAllowCustomWeapons)
-		SetDefaultWeaponProps ();
+GET_VAL (gameOpts->gameplay.bObserve, "observer mode");
+if (!bRestricted) {
+	GET_VAL (extraGameInfo [0].headlight.bDrainPower, "headlight drains power");
+	GET_VAL (extraGameInfo [0].bGatlingSpeedUp, "spinup gatling");
+	if (!gameStates.app.bGameRunning) {
+		GET_VAL (extraGameInfo [0].bAllowCustomWeapons, "allow custom weapons");
+		extraGameInfo [1].bAllowCustomWeapons = extraGameInfo [0].bAllowCustomWeapons;
+		if (!extraGameInfo [0].bAllowCustomWeapons)
+			SetDefaultWeaponProps ();
+		}
 	}
-//if (gameStates.app.bGameRunning)
-	GetShipSelection (m, optShip);
+GetShipSelection (m, optShip);
 DefaultGameplaySettings ();
 if (IsMultiGame && !COMPETITION && EGI_FLAG (bSmokeGrenades, 0, 0, 0))
 	LOCALPLAYER.secondaryAmmo [PROXMINE_INDEX] = 4;

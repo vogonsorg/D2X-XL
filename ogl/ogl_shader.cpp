@@ -40,7 +40,9 @@
 #include "particles.h"
 #include "../effects/glow.h"
 #include "sphere.h"
+#include "fastrender.h"
 #include "rendermine.h"
+#include "postprocessing.h"
 #include "gpgpu_lighting.h"
 
 #define SUSPENDABLE_SHADERS 1
@@ -111,7 +113,7 @@ m_bSuspendable = false;
 
 void CShaderManager::Destroy (bool bAll)
 {
-for (int i = 0; i < int (m_shaders.ToS ()); i++) {
+for (int32_t i = 0; i < int32_t (m_shaders.ToS ()); i++) {
 	Delete (i);
 	if (bAll)
 		Reset (i);
@@ -126,17 +128,17 @@ if (bAll)
 char* CShaderManager::Load (const char* fileName) //, char* Shadersource)
 {
 	FILE*	fp;
-	char*	bufP = NULL;
-	int 	fSize;
+	char*	pBuffer = NULL;
+	int32_t 	fSize;
 #ifdef _WIN32
-	int	f;
+	int32_t	f;
 #endif
 	char 	fn [FILENAME_LEN];
 
 if (!(fileName && *fileName))
 	return NULL;	// no fileName
 
-sprintf (fn, "%s%s%s", gameFolders.szShaderDir, *gameFolders.szShaderDir ? "/" : "", fileName);
+sprintf (fn, "%s%s", gameFolders.game.szShaders, fileName);
 #ifdef _WIN32
 if (0 > (f = _open (fn, _O_RDONLY)))
 	return NULL;	// couldn't open file
@@ -158,19 +160,19 @@ if (fSize <= 0) {
 	}
 #endif
 
-if (!(bufP = new char [fSize + 1])) {
+if (!(pBuffer = new char [fSize + 1])) {
 	fclose (fp);
 	return NULL;	// out of memory
 	}
-fSize = (int) fread (bufP, sizeof (char), fSize, fp);
-bufP [fSize] = '\0';
+fSize = (int32_t) fread (pBuffer, sizeof (char), fSize, fp);
+pBuffer [fSize] = '\0';
 fclose (fp);
-return bufP;
+return pBuffer;
 }
 
 //------------------------------------------------------------------------------
 
-void CShaderManager::PrintLog (GLhandleARB handle, int bProgram)
+void CShaderManager::PrintLog (GLhandleARB handle, int32_t bProgram)
 {
    GLint nLogLen = 0;
    GLint charsWritten = 0;
@@ -217,9 +219,9 @@ if ((nLogLen > 0) && (infoLog = new char [nLogLen])) {
 
 //------------------------------------------------------------------------------
 
-int CShaderManager::Create (int nShader)
+int32_t CShaderManager::Create (int32_t nShader)
 {
-if ((nShader < 0) || (nShader >= int (m_shaders.ToS ())))
+if ((nShader < 0) || (nShader >= int32_t (m_shaders.ToS ())))
 	return 0;
 if (m_shaders [nShader].program || (m_shaders [nShader].program = glCreateProgramObjectARB ()))
 	return 1;
@@ -239,31 +241,31 @@ if (shaderProg) {
 
 //------------------------------------------------------------------------------
 
-int CShaderManager::Alloc (int& nShader)
+int32_t CShaderManager::Alloc (int32_t& nShader)
 {
-if ((nShader >= 0) && (nShader < int (m_shaders.ToS ())) && (m_shaders [nShader].refP == &nShader))
+if ((nShader >= 0) && (nShader < int32_t (m_shaders.ToS ())) && (m_shaders [nShader].pRef == &nShader))
 	return nShader;
 if (!m_shaders.Grow ())
 	return nShader = -1;
 nShader = m_shaders.ToS () - 1;
 memset (&m_shaders [nShader], 0, sizeof (m_shaders [nShader]));
-m_shaders [nShader].refP = &nShader;
+m_shaders [nShader].pRef = &nShader;
 return nShader;
 }
 
 //------------------------------------------------------------------------------
 
-int CShaderManager::Compile (int nShader, const char* pszFragShader, const char* pszVertShader, bool bFromFile)
+int32_t CShaderManager::Compile (int32_t nShader, const char* pszFragShader, const char* pszVertShader, bool bFromFile)
 {
 	GLint		bCompiled [2] = {0,0};
 	bool		bError = false;
-	int		i;
+	int32_t		i;
 
 	static GLint nShaderTypes [2] = {GL_VERTEX_SHADER, GL_FRAGMENT_SHADER};
 
 if (!ogl.m_features.bShaders)
 	return 0;
-if ((nShader < 0) || (nShader >= int (m_shaders.ToS ())))
+if ((nShader < 0) || (nShader >= int32_t (m_shaders.ToS ())))
 	return 0;
 tShaderData& shader = m_shaders [nShader];
 
@@ -319,18 +321,18 @@ return 0;
 
 //------------------------------------------------------------------------------
 
-int CShaderManager::Link (int nShader)
+int32_t CShaderManager::Link (int32_t nShader)
 {
 if (!ogl.m_features.bShaders)
 	return 0;
-if ((nShader < 0) || (nShader >= int (m_shaders.ToS ())))
+if ((nShader < 0) || (nShader >= int32_t (m_shaders.ToS ())))
 	return 0;
 tShaderData& shader = m_shaders [nShader];
 
 if (!shader.program) {
 	if (!Create (nShader))
 		return 0;
-	int	i = 0;
+	int32_t	i = 0;
 	if (gameOpts->ogl.bGlTexMerge)
 		i |= 1;
 	if (gameStates.render.nLightingMethod)
@@ -356,9 +358,9 @@ return 0;
 
 //------------------------------------------------------------------------------
 
-int CShaderManager::Build (int& nShader, const char* pszFragShader, const char* pszVertShader, bool bFromFile)
+int32_t CShaderManager::Build (int32_t& nShader, const char* pszFragShader, const char* pszVertShader, bool bFromFile)
 {
-if ((nShader < 0) || (nShader >= int (m_shaders.ToS ()))) {
+if ((nShader < 0) || (nShader >= int32_t (m_shaders.ToS ()))) {
 	if (Alloc (nShader) < 0)
 		return 0;
 	if (!Create (nShader))
@@ -377,21 +379,21 @@ return 1;
 
 //------------------------------------------------------------------------------
 
-void CShaderManager::Reset (int nShader)
+void CShaderManager::Reset (int32_t nShader)
 {
-if ((nShader >= 0) && (nShader < int (m_shaders.ToS ()))) {
-	*m_shaders [nShader].refP = -1;
-	m_shaders [nShader].refP = NULL;
+if ((nShader >= 0) && (nShader < int32_t (m_shaders.ToS ()))) {
+	*m_shaders [nShader].pRef = -1;
+	m_shaders [nShader].pRef = NULL;
 	}
 }
 
 //------------------------------------------------------------------------------
 
-void CShaderManager::Delete (int nShader)
+void CShaderManager::Delete (int32_t nShader)
 {
-if ((nShader >= 0) && (nShader < int (m_shaders.ToS ()))) {
+if ((nShader >= 0) && (nShader < int32_t (m_shaders.ToS ()))) {
 	tShaderData& shader = m_shaders [nShader];
-	for (int j = 0; j < 2; j++) {
+	for (int32_t j = 0; j < 2; j++) {
 		if (shader.shaders [j]) {
 			glDeleteObjectARB (shader.shaders [j]);
 			shader.shaders [j] = 0;
@@ -406,11 +408,11 @@ if ((nShader >= 0) && (nShader < int (m_shaders.ToS ()))) {
 
 //------------------------------------------------------------------------------
 
-intptr_t CShaderManager::Deploy (int nShader, bool bSuspendable)
+intptr_t CShaderManager::Deploy (int32_t nShader, bool bSuspendable)
 {
 if (!ogl.m_features.bShaders)
 	return 0;
-if (nShader >= int (m_shaders.ToS ()))
+if (nShader >= int32_t (m_shaders.ToS ()))
 	return 0;
 GLhandleARB shaderProg = (nShader < 0) ? 0 : m_shaders [nShader].program;
 if (m_nCurrent == nShader) {
@@ -432,7 +434,7 @@ else
 	if ((m_bSuspendable = bSuspendable))
 		Set ("bSuspended", 0);
 #endif
-	gameData.render.nShaderChanges++;
+	gameData.renderData.nShaderChanges++;
 	}
 return intptr_t (shaderProg);
 }
@@ -449,7 +451,7 @@ Destroy ();
 Init ();
 ::PrintLog (1, "initializing shader programs\n");
 glGetIntegerv (GL_MAX_TEXTURE_UNITS, &nTMUs);
-ogl.m_features.bShaders = int (nTMUs >= 4);
+ogl.m_features.bShaders = int32_t (nTMUs >= 4);
 if (!ogl.m_features.bShaders) {
 	::PrintLog (-1, "GPU has too few texture units (%d)\n", nTMUs);
 	ogl.m_states.bLowMemory = 0;
@@ -475,6 +477,8 @@ InitPerPixelLightingShaders ();
 ResetLightmapShaders ();
 InitLightmapShaders ();
 ResetSphereShaders ();
+InitFogVolumeShader ();
+InitFogShader ();
 #if 0
 Link (Alloc ());
 #endif

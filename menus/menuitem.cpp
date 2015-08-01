@@ -108,7 +108,7 @@ FreeId ();
 
 void CMenuItem::FreeTextBms (void)
 {
-for (int i = 0; i < 2; i++)
+for (int32_t i = 0; i < 2; i++)
 	if (m_bmText [i]) {
 		delete m_bmText [i];
 		m_bmText [i] = NULL;
@@ -127,25 +127,25 @@ if (m_szId) {
 
 //------------------------------------------------------------------------------ 
 
-short CMenuItem::SetColor (int bIsCurrent, int bTiny) 
+int16_t CMenuItem::SetColor (int32_t bIsCurrent, int32_t bTiny) 
 {
 if (bTiny) {
-	if (!gameData.menu.bValid) {
-		gameData.menu.warnColor = RED_RGBA;
-		gameData.menu.keyColor = RGB_PAL (57, 49, 20);
-		gameData.menu.tabbedColor = WHITE_RGBA;
-		gameData.menu.tinyColors [0][0] = RGB_PAL (29, 29, 47);
-		gameData.menu.tinyColors [0][1] = RED_RGBA;
-		gameData.menu.tinyColors [1][0] = RGB_PAL (57, 49, 20);
-		gameData.menu.tinyColors [1][1] = ORANGE_RGBA;
-		gameData.menu.bValid = 1;
+	if (!gameData.menuData.bValid) {
+		gameData.menuData.warnColor = RED_RGBA;
+		gameData.menuData.keyColor = RGB_PAL (57, 49, 20);
+		gameData.menuData.tabbedColor = WHITE_RGBA;
+		gameData.menuData.tinyColors [0][0] = RGB_PAL (29, 29, 47);
+		gameData.menuData.tinyColors [0][1] = RED_RGBA;
+		gameData.menuData.tinyColors [1][0] = RGB_PAL (57, 49, 20);
+		gameData.menuData.tinyColors [1][1] = ORANGE_RGBA;
+		gameData.menuData.bValid = 1;
 		}
-	if (gameData.menu.colorOverride)
-		fontManager.SetColorRGBi (gameData.menu.colorOverride, 1, 0, 0);
+	if (gameData.menuData.colorOverride)
+		fontManager.SetColorRGBi (gameData.menuData.colorOverride, 1, 0, 0);
 	else if (m_text [0] == '\t')
-		fontManager.SetColorRGBi (gameData.menu.tabbedColor, 1, 0, 0);
+		fontManager.SetColorRGBi (gameData.menuData.tabbedColor, 1, 0, 0);
 	else 
-		fontManager.SetColorRGBi (gameData.menu.tinyColors [bIsCurrent][m_bUnavailable], 1, 0, 0);
+		fontManager.SetColorRGBi (gameData.menuData.tinyColors [bIsCurrent][m_bUnavailable], 1, 0, 0);
 	}
 else {
 	if (bIsCurrent)
@@ -160,7 +160,7 @@ return CCanvas::Current ()->FontColor (0).index;
 
 void CMenuItem::TrimWhitespace (void)
 {
-int i, l = (int) strlen (m_text);
+int32_t i, l = (int32_t) strlen (m_text);
 
 for (i = l - 1; i >= 0; i--) {
 	if (::isspace (m_text [i]))
@@ -172,12 +172,38 @@ for (i = l - 1; i >= 0; i--) {
 
 //------------------------------------------------------------------------------ 
 
-int nTabIndex = -1;
-int nTabs [] = {15, 87, 124, 162, 228, 253};
+int32_t nTabIndex = -1;
+int32_t nTabs [] = {15, 87, 124, 162, 228, 253};
 
-void CMenuItem::DrawHotKeyString (int bIsCurrent, int bTiny, int bCreateTextBms, int nDepth)
+bool CMenuItem::DrawHotKeyStringBitmap (int32_t bIsCurrent, int32_t bTiny, int32_t bCreateTextBms, int32_t nDepth)
 {
-	CBitmap	*bmP = m_bmText [bIsCurrent];
+if (!FAST_MENUS)
+	return false;
+if (!bCreateTextBms)
+	return false;
+
+CBitmap*&	bmText = m_bmText [bIsCurrent];
+
+if (m_bmText [bIsCurrent] && strcmp (m_bmText [bIsCurrent]->Name (), "String Bitmap")) {
+	PrintLog (0, "Warning: Menu text bitmap corrupted!\n");
+	m_bmText [bIsCurrent] = NULL;
+	}
+if (!m_bmText [bIsCurrent])
+	m_bmText [bIsCurrent] = CreateStringBitmap (m_text, MENU_KEY (m_nKey, - 1), gameData.menuData.keyColor, nTabs, m_bCentered, m_w, bTiny * 2, 0);
+if (!m_bmText [bIsCurrent]) {
+	m_bmText [bIsCurrent] = CreateStringBitmap (m_text, MENU_KEY (m_nKey, - 1), gameData.menuData.keyColor, nTabs, m_bCentered, m_w, bTiny * 2, 0);
+	return false;
+	}
+float	fScale = fontManager.Scale ();
+m_bmText [bIsCurrent]->Render (NULL, gameData.X (m_x), m_y, int32_t (m_bmText [bIsCurrent]->Width () * fScale), int32_t (m_bmText [bIsCurrent]->Height () * fScale), 
+										 0, 0, m_bmText [bIsCurrent]->Width (), m_bmText [bIsCurrent]->Height (), 1, gameStates.app.bDemoData ? -1 : 0);
+return true;
+}
+
+//------------------------------------------------------------------------------ 
+
+void CMenuItem::DrawHotKeyString (int32_t bIsCurrent, int32_t bTiny, int32_t bCreateTextBms, int32_t nDepth)
+{
 
 if (!*m_text)
 	return;
@@ -185,19 +211,12 @@ if (m_color)
 	fontManager.SetColorRGBi (m_color, 1, 0, 0);
 else
 	SetColor (bIsCurrent, bTiny);
-if (bCreateTextBms && FAST_MENUS && 
-	 (bmP || (bmP = CreateStringBitmap (m_text, MENU_KEY (m_nKey, - 1), gameData.menu.keyColor, nTabs, m_bCentered, m_w, 0)))) {
-	float	fScale = fontManager.Scale ();
-	bmP->Render (CCanvas::Current (), m_x, m_y, int (bmP->Width () * fScale), int (bmP->Height () * fScale), 
-					 0, 0, bmP->Width (), bmP->Height (), 1, gameStates.app.bDemoData ? -1 : 0);
-	m_bmText [bIsCurrent] = bmP;
-	}
-else {
 
-		int	w, h, aw, l, i, 
-				x = m_x, 
-				y = m_y;
-		char	*t, *ps = m_text, s [MENU_MAX_TEXTLEN], ch = 0, ch2;
+if (!DrawHotKeyStringBitmap (bIsCurrent, bTiny, bCreateTextBms, nDepth)) {
+		int32_t	w, h, aw, l, i, 
+					x = m_x, 
+					y = m_y;
+		char		*t, *ps = m_text, s [MENU_MAX_TEXTLEN], ch = 0, ch2;
 
 	if ((t = strchr (ps, '\n'))) {
 		strncpy (s, ps, sizeof (s));
@@ -233,7 +252,7 @@ else {
 		m_y = y;
 		}
 	else {
-		l = (int) strlen (m_text);
+		l = (int32_t) strlen (m_text);
 		if (bIsCurrent || !m_nKey)
 			i = l;
 		else {
@@ -252,10 +271,10 @@ else {
 			}
 		//m_x = x + w;
 		if (i) {
-			GrString (x, y, s, NULL);
-	#if DBG
-			//GrUpdate (0);
-	#endif
+			GrString (x, y, s);
+#if DBG
+			//ogl.Update (0);
+#endif
 			}
 		if (i < l) {	// print the hotkey
 			x += w;
@@ -263,16 +282,16 @@ else {
 			ch2 = s [++i];
 			s [i] = '\0';
 			SetColor (1, bTiny);
-			GrString (x, y, s + i - 1, NULL);
-	#if DBG
-			//GrUpdate (0);
-	#endif
+			GrString (x, y, s + i - 1);
+#if DBG
+			//ogl.Update (0);
+#endif
 			SetColor (0, bTiny);
 			if (i < l) { // print text following the hotkey
 				fontManager.Current ()->StringSize (s + i - 1, w, h, aw);
 				x += w;
 				s [i] = ch2;
-				GrString (x, y, s + i, NULL);
+				GrString (x, y, s + i);
 				}
 			}
 		}
@@ -281,16 +300,16 @@ else {
 
 //------------------------------------------------------------------------------ 
 // Draw a left justfied string
-void CMenuItem::DrawString (int bIsCurrent, int bTiny)
+void CMenuItem::DrawString (int32_t bIsCurrent, int32_t bTiny)
 {
-	int w1 = m_w, x = m_x, y = m_y;
-	int l, w, h, aw, tx = 0, t = 0, i;
+	int32_t w1 = m_w, x = m_x, y = m_y;
+	int32_t l, w, h, aw, tx = 0, t = 0, i;
 	char* p, *s1, measure [2] , *s = m_text;
-	int XTabs [6];
+	int32_t XTabs [6];
 	static char s2 [1024];
 
 p = s1 = NULL;
-l = (int) strlen (s);
+l = (int32_t) strlen (s);
 memcpy (s2, s, l + 1);
 
 for (i = 0; i < 6; i++)
@@ -310,7 +329,7 @@ if (w1 > 0)
 fontManager.Current ()->StringSize (s2, w, h, aw);
 // CHANGED
 if (RETRO_STYLE)
-	backgroundManager.Top ()->Saved (1)->BlitClipped (CCanvas::Current (), 5, y - 1, backgroundManager.Current ()->Width () - 15, h + 2, 5, y - 1);
+	backgroundManager.Top ()->Saved ()->BlitClipped (CCanvas::Current (), 5, y - 1, backgroundManager.Current ()->Width () - 15, h + 2, 5, y - 1);
 if (0 && gameStates.multi.bSurfingNet) {
 	for (i = 0;i < l;i++) {
 		if (s2 [i] == '\t' && gameStates.multi.bSurfingNet) {
@@ -320,7 +339,7 @@ if (0 && gameStates.multi.bSurfingNet) {
 			}
 		measure [0] = s2 [i];
 		fontManager.Current ()->StringSize (measure, tx, h, aw);
-		GrString (x, y, measure, NULL);
+		GrString (x, y, measure);
 		x += tx;
 		}
 	}
@@ -331,14 +350,14 @@ else {
 
 if (!gameStates.multi.bSurfingNet && p && (w1 > 0)) {
 	fontManager.Current ()->StringSize (s1, w, h, aw);
-	GrString (x + w1 - w, y, s1, NULL);
+	GrString (x + w1 - w, y, s1);
 	*p = '\t';
 	}
 }
 
 //------------------------------------------------------------------------------ 
 // Draw a slider and it's string
-void CMenuItem::DrawSlider (int bIsCurrent, int bTiny)
+void CMenuItem::DrawSlider (int32_t bIsCurrent, int32_t bTiny)
 {
 char* s1 = NULL;
 char* p = strchr (m_text, '\t');
@@ -347,31 +366,32 @@ if (p) {
 	s1 = p + 1;
 	}
 
-int w, h, aw;
+int32_t w, h, aw;
 fontManager.Current ()->StringSize (m_text, w, h, aw);
 
-int y = m_y;
+int32_t y = m_y;
 if (RETRO_STYLE)
 	backgroundManager.Current ()->BlitClipped (CCanvas::Current (), 5, y, backgroundManager.Current ()->Width () - 15, h, 5, y);
 DrawHotKeyString (bIsCurrent, bTiny, 1, 0);
 if (p) {
 	fontManager.Current ()->StringSize (s1, w, h, aw);
-	int x = m_x + m_w - w;
+	int32_t x = m_x + CMenu::Scaled (m_w) - w;
 	if (RETRO_STYLE) {
 		backgroundManager.Current ()->BlitClipped (CCanvas::Current (), x, y, w, 1, x, y);
 		backgroundManager.Current ()->BlitClipped (CCanvas::Current (), x, y + h - 1, w, 1, x, y);
 		}
-	GrString (x, y, s1, NULL);
+	GrString (x, y, s1);
+	m_xSlider = x;
 	*p = '\t';
 	}
 }
 
 //------------------------------------------------------------------------------ 
 // Draw a right justfied string
-void CMenuItem::DrawRightString (int bIsCurrent, int bTiny, char* s)
+void CMenuItem::DrawRightString (int32_t bIsCurrent, int32_t bTiny, char* s)
 {
-	int	w, h, aw;
-	int	w1 = m_rightOffset, 
+	int32_t	w, h, aw;
+	int32_t	w1 = m_rightOffset, 
 			x = m_x, 
 			y = m_y;
 
@@ -392,9 +412,9 @@ m_x = h;
 
 //------------------------------------------------------------------------------ 
 
-void CMenuItem::DrawBlackBox (int w1, int x, int y, const char* s, int bTiny)
+void CMenuItem::DrawBlackBox (int32_t w1, int32_t x, int32_t y, const char* s, int32_t bTiny)
 {
-	int w, h, aw;
+	int32_t w, h, aw;
 
 fontManager.Current ()->StringSize (s, w, h, aw);
 if (bTiny) {
@@ -412,14 +432,14 @@ OglDrawFilledRect (x, y + h, x + w1, y + h);
 OglDrawFilledRect (x + w1, y - 1, x + w1, y + h);
 CCanvas::Current ()->SetColorRGB (0, 0, 0, 255);
 OglDrawFilledRect (x, y, x + w1 - 1, y + h - 1);
-GrString (x + 1, y + 1, s, NULL);
+GrString (x + 1, y + 1, s);
 }
 
 //------------------------------------------------------------------------------ 
 
-void CMenuItem::DrawInputBox (int w, int x, int y, char* text, int current, int bTiny)
+void CMenuItem::DrawInputBox (int32_t w, int32_t x, int32_t y, char* text, int32_t current, int32_t bTiny)
 {
-	int w1, h1, aw;
+	int32_t w1, h1, aw;
 
 while (*text) {
 	fontManager.Current ()->StringSize (text, w1, h1, aw);
@@ -432,14 +452,14 @@ if (!*text)
 	w1 = 0;
 DrawBlackBox (w, x, y, text, bTiny);
 if (current)	
-	GrString (x + w1 + 1, y, CURSOR_STRING, NULL);
+	GrString (x + w1 + 1, y, CURSOR_STRING);
 }
 
 //------------------------------------------------------------------------------ 
 
-void CMenuItem::DrawGauge (int w, int x, int y, int val, int maxVal, int current)
+void CMenuItem::DrawGauge (int32_t w, int32_t x, int32_t y, int32_t val, int32_t maxVal, int32_t current)
 {
-	int w1, h, aw;
+	int32_t w1, h, aw;
 
 fontManager.Current ()->StringSize (" ", w1, h, aw);
 if (!w) 
@@ -456,7 +476,7 @@ if (w1 < w) {
 CCanvas::Current ()->SetColorRGB (200, 0, 0, 255);
 if (w1)
 	OglDrawFilledRect (x, y, x + w1, y + h - 1);
-glLineWidth (sqrt (float (screen.Width ()) / 640.0f));
+glLineWidth (sqrt (float (gameData.renderData.screen.Width ()) / 640.0f));
 OglDrawEmptyRect (x, y, x + w - 1, y + h - 1);
 glLineWidth (1);
 }
@@ -466,12 +486,12 @@ glLineWidth (1);
 void CMenuItem::ShowHelp (void)
 {
 if (m_szHelp && *m_szHelp) {
-	int nInMenu = gameStates.menus.nInMenu;
+	int32_t nInMenu = gameStates.menus.nInMenu;
 	gameStates.menus.nInMenu = 0;
-	gameData.menu.helpColor = RGB_PAL (47, 47, 47);
-	gameData.menu.colorOverride = gameData.menu.helpColor;
-	MsgBox ("D2X - XL online help", NULL, - 3, m_szHelp, " ", TXT_CLOSE);
-	gameData.menu.colorOverride = 0;
+	gameData.menuData.helpColor = RGB_PAL (47, 47, 47);
+	gameData.menuData.colorOverride = gameData.menuData.helpColor;
+	TextBox ("D2X - XL online help", BG_STANDARD, -3, m_szHelp, " ", TXT_CLOSE);
+	gameData.menuData.colorOverride = 0;
 	gameStates.menus.nInMenu = nInMenu;
 	}
 }
@@ -480,12 +500,12 @@ if (m_szHelp && *m_szHelp) {
 
 #include "timer.h"
 
-//for text itemP, constantly redraw cursor (to achieve flash)
+//for text pItem, constantly redraw cursor (to achieve flash)
 void CMenuItem::UpdateCursor (void)
 {
-	int w, h, aw;
+	int32_t w, h, aw;
 	fix time = TimerGetApproxSeconds ();
-	int x, y;
+	int32_t x, y;
 	char* text = m_text;
 
 	Assert (m_nType == NM_TYPE_INPUT_MENU || m_nType == NM_TYPE_INPUT);
@@ -502,7 +522,7 @@ if (!*text)
 x = m_x + w; 
 y = m_y;
 if (time & 0x8000)
-	GrString (x, y, CURSOR_STRING, NULL);
+	GrString (x, y, CURSOR_STRING);
 else {
 	CCanvas::Current ()->SetColorRGB (0, 0, 0, 255);
 	OglDrawFilledRect (x, y, x + CCanvas::Current ()->Font ()->Width () - 1, y + CCanvas::Current ()->Font ()->Height () - 1);
@@ -511,7 +531,7 @@ else {
 
 //------------------------------------------------------------------------------ 
 
-void CMenuItem::Draw (int bIsCurrent, int bTiny)
+void CMenuItem::Draw (int32_t bIsCurrent, int32_t bTiny)
 {
 SetColor (bIsCurrent, bTiny);
 if (m_bRebuild) {
@@ -534,8 +554,8 @@ switch (m_nType) {
 		else if (m_value > m_maxValue) 
 			m_value = m_maxValue;
 		sprintf (m_text, "%s\t%s", m_savedText, SLIDER_LEFT);
-		int l = int (strlen (m_text));
-		int h = m_maxValue - m_minValue + 1;
+		int32_t l = int32_t (strlen (m_text));
+		int32_t h = m_maxValue - m_minValue + 1;
 		memset (m_text + l, SLIDER_MIDDLE [0], h);
 		m_text [l + h] = SLIDER_RIGHT [0];
 		m_text [l + h + 1] = '\0';
@@ -547,17 +567,17 @@ switch (m_nType) {
 
 	case NM_TYPE_INPUT_MENU:
 		if (m_group)
-			DrawInputBox (m_w, m_x, m_y, m_text, bIsCurrent, bTiny);
+			DrawInputBox (CMenu::Scaled (m_w), m_x, m_y, m_text, bIsCurrent, bTiny);
 		else
 			DrawString (bIsCurrent, bTiny);
 		break;
 
 	case NM_TYPE_INPUT:
-		DrawInputBox (m_w, m_x, m_y, m_text, bIsCurrent, bTiny);
+		DrawInputBox (CMenu::Scaled (m_w), m_x, m_y, m_text, bIsCurrent, bTiny);
 		break;
 
 	case NM_TYPE_GAUGE:
-		DrawGauge (m_w, m_x, m_y, m_value, m_maxValue, bIsCurrent);
+		DrawGauge (CMenu::Scaled (m_w), m_x, m_y, m_value, m_maxValue, bIsCurrent);
 		break;
 
 	case NM_TYPE_CHECK:
@@ -588,7 +608,7 @@ switch (m_nType) {
 
 //------------------------------------------------------------------------------ 
 
-int CMenuItem::GetSize (int h, int aw, int& nStringWidth, int& nStringHeight, int& nAverageWidth, int& nMenus, int& nOthers, int bTiny)
+int32_t CMenuItem::GetSize (int32_t h, int32_t aw, int32_t& nStringWidth, int32_t& nStringHeight, int32_t& nAverageWidth, int32_t& nMenus, int32_t& nOthers, int32_t bTiny)
 {
 #if 0
 if (!gameStates.app.bEnglish)
@@ -604,7 +624,7 @@ if (m_nKey) {
 	}
 m_bRedraw = 1;
 m_y = h;
-fontManager.Current ()->StringSize (m_text, nStringWidth, nStringHeight, nAverageWidth);
+int32_t nLineCount = fontManager.Current ()->StringSizeTabbed (m_text, nStringWidth, nStringHeight, nAverageWidth, nTabs);
 nStringHeight += 2 * bTiny;
 m_rightOffset = 0;
 
@@ -613,20 +633,21 @@ if (gameStates.multi.bSurfingNet)
 
 m_savedText [0] = '\0';
 if (m_nType == NM_TYPE_SLIDER) {
-	int w1, h1, aw1;
+	int32_t w1, h1, aw1;
 	nOthers++;
 	m_savedText [0] = '\t';
 	m_savedText [1] = SLIDER_LEFT [0];
 	memset (m_savedText + 2, SLIDER_MIDDLE [0], (m_maxValue - m_minValue + 1));
 	m_savedText [m_maxValue - m_minValue + 2] = SLIDER_RIGHT [0];
-	fontManager.Current ()->StringSize (m_savedText, w1, h1, aw1);
+	m_savedText [m_maxValue - m_minValue + 3] = '\0';
+	fontManager.Current ()->StringSizeTabbed (m_savedText, w1, h1, aw1, nTabs);
 	nStringWidth += w1 + aw;
 	}
 else if (m_nType == NM_TYPE_MENU) {
 	nMenus++;
 	}
 else if (m_nType == NM_TYPE_CHECK) {
-	int w1, h1, aw1;
+	int32_t w1, h1, aw1;
 	nOthers++;
 	fontManager.Current ()->StringSize (NORMAL_CHECK_BOX, w1, h1, aw1);
 	m_rightOffset = w1;
@@ -635,7 +656,7 @@ else if (m_nType == NM_TYPE_CHECK) {
 		m_rightOffset = w1;
 	}
 else if (m_nType == NM_TYPE_RADIO) {
-	int w1, h1, aw1;
+	int32_t w1, h1, aw1;
 	nOthers++;
 	fontManager.Current ()->StringSize (NORMAL_RADIO_BOX, w1, h1, aw1);
 	m_rightOffset = w1;
@@ -644,7 +665,7 @@ else if (m_nType == NM_TYPE_RADIO) {
 		m_rightOffset = w1;
 	}
 else if (m_nType == NM_TYPE_NUMBER) {
-	int w1, h1, aw1;
+	int32_t w1, h1, aw1;
 	char szValue [20];
 	nOthers++;
 	sprintf (szValue, "%d", m_maxValue);
@@ -672,7 +693,7 @@ else if (m_nType == NM_TYPE_INPUT_MENU) {
 	}
 m_w = nStringWidth;
 m_h = nStringHeight;
-return nStringHeight;
+return nLineCount;
 }
 
 //------------------------------------------------------------------------------
@@ -680,8 +701,13 @@ return nStringHeight;
 void CMenuItem::SetText (const char* pszSrc, char* pszDest)
 {
 if (pszSrc) {
-	if (!pszDest)
+	if (!pszDest) {
 		pszDest = m_text;
+		if (m_bmText [0]) {
+			delete m_bmText [0];
+			m_bmText [0] = NULL;
+			}
+		}
 	strncpy (pszDest, pszSrc, MENU_MAX_TEXTLEN);
 	pszDest [MENU_MAX_TEXTLEN] = '\0';
 	}
@@ -723,3 +749,4 @@ if (pszId && *pszId) {
 
 //------------------------------------------------------------------------------
 //eof
+

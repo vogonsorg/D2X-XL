@@ -7,16 +7,16 @@
 
 // Empty file
 typedef struct FILEFINDSTRUCT {
-	unsigned long size;
+	uint32_t size;
 	char name [256];
 } FILEFINDSTRUCT;
 
-int FileFindFirst(const char *search_str, FILEFINDSTRUCT *ffstruct, int bFindDirs);
-int FileFindNext(FILEFINDSTRUCT *ffstruct, int bFindDirs);
-int FileFindClose(void);
+int32_t FileFindFirst (const char *search_str, FILEFINDSTRUCT *ffstruct, int32_t bFindDirs);
+int32_t FileFindNext (FILEFINDSTRUCT *ffstruct, int32_t bFindDirs);
+int32_t FileFindClose (void);
 
 typedef struct FILETIMESTRUCT {
-	ushort date,time;
+	uint16_t date, time;
 } FILETIMESTRUCT;
 
 #else //!defined (_WIN32)
@@ -37,9 +37,9 @@ typedef struct FILEFINDSTRUCT {
 #define	FF_NORMAL		0
 #define	FF_DIRECTORY	1
 
-int FileFindNext (FILEFINDSTRUCT *ffsP, int nFlags);
-int FileFindFirst (const char *pszFilter, FILEFINDSTRUCT *ffsP, int nFlags);
-void FileFindClose(FILEFINDSTRUCT *ffsP);
+int32_t FileFindNext (FILEFINDSTRUCT *ffsP, int32_t nFlags);
+int32_t FileFindFirst (const char *pszFilter, FILEFINDSTRUCT *ffsP, int32_t nFlags);
+void FileFindClose (FILEFINDSTRUCT *ffsP);
 
 #endif //_WIN32
 

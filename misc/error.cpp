@@ -38,7 +38,7 @@ COPYRIGHT 1993-1998 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 FILE *fLog = NULL;
 
 //edited 05/17/99 Matt Mueller added err_ prefix to prevent conflicts with statically linking SDL
-int err_initialized=0;
+int32_t err_initialized=0;
 //end edit -MM
 
 static void (*ErrorPrintFunc) (const char *);
@@ -46,16 +46,27 @@ static void (*ErrorPrintFunc) (const char *);
 char szExitMsg[MAX_MSG_LEN]="";
 char szWarnMsg[MAX_MSG_LEN];
 
-int nLogDate = 0;
-int glHWHash = 0;
-
-void ShowInGameWarning (const char *s);
+int32_t nLogDate = 0;
+int32_t glHWHash = 0;
 
 #ifdef __unix__
 #	define LINUX_MSGBOX	0
 #else
 #	define LINUX_MSGBOX	0
 #endif
+
+class CStackFrame {
+	public:
+		const char	*m_pszFunction;
+		const char	*m_pszFile;
+		int32_t		m_nLine;
+		int32_t		m_nThread;
+
+		inline bool operator== (CStackFrame& other) { return (m_nThread == other.m_nThread) && m_pszFunction && other.m_pszFunction && !strcmp (m_pszFunction, other.m_pszFunction); }
+		inline void PrintToLog (void) { PrintLog (0, "%s [%d] (%s.%d)\n", m_pszFunction, m_nThread, m_pszFile, m_nLine); }
+	};
+
+CStack< CStackFrame > callStack;
 
 //------------------------------------------------------------------------------
 
@@ -102,7 +113,7 @@ pWarnFunc = warn_printf;
 void _CDECL_ set_exit_message(const char *fmt,...)
 {
 	va_list arglist;
-	int len;
+	int32_t len;
 
 va_start (arglist,fmt);
 len = vsprintf (szExitMsg,fmt,arglist);
@@ -113,11 +124,11 @@ if (len==-1 || len>MAX_MSG_LEN)
 
 //------------------------------------------------------------------------------
 
-void _Assert(int expr, const char *expr_text, const char *filename, int linenum)
+void _Assert(int32_t expr, const char *expr_text, const char *filename, int32_t linenum)
 {
 if (!(expr)) {
 #if defined (_DEBUG) && defined (_WIN32)
-	//_asm int 3;
+	//_asm int32_t 3;
 #else
 	Int3();
 #endif
@@ -197,11 +208,11 @@ return True;
 
 //------------------------------------------------------------------------------
 
-static int MsgSize (char* pszMsg, int& nCols)
+static int32_t MsgSize (char* pszMsg, int32_t& nCols)
 {
 if (!(pszMsg && *pszMsg))
 	return 0;
-int nRows = 1;
+int32_t nRows = 1;
 nCols = 0;
 for (char* p = pszMsg; *p && (pszMsg = strchr (p, '\n')); nRows++, p = ++pszMsg) {
 	if (nCols < pszMsg - p)
@@ -231,19 +242,19 @@ XtAppSetExitFlag (appShell);
 // Taken from the Motif programmer's manual and slightly adapted (no icon, single button),
 // minimal window decoration).
 
-Widget XmMessageDialog (const char* pszMsg, int nRows, int nCols, bool bError)
+Widget XmMessageDialog (const char* pszMsg, int32_t nRows, int32_t nCols, bool bError)
 {
     Widget       msgBox, pane, msgText, form, /*sep, label,*/ widget;
     void         DestroyShell(Widget, XtPointer, XtPointer);
     //Pixmap       pixmap;
     Property          args [10];
-    int          n = 0;
-    int          i;
+    int32_t          n = 0;
+    int32_t          i;
     Dimension    h;
 // Set up a DialogShell as a popup window. Set the delete window protocol response to XmDESTROY to make sure that
 // the window goes away appropriately. Otherwise, it's XmUNMAP which means it'd be lost forever, since we're not storing
 // the widget globally or statically to this function.
-Widget topWid = XtVaAppInitialize (&appShell, "D2X-XL", NULL, 0, &gameData.app.argC, gameData.app.argV, NULL, NULL);
+Widget topWid = XtVaAppInitialize (&appShell, "D2X-XL", NULL, 0, &gameData.appData.argC, gameData.appData.argV, NULL, NULL);
 XtSetArg (args [0], XmNdeleteResponse, XmDESTROY);
 msgBox = XmCreateDialogShell (topWid, bError ? const_cast<char*>("Error") : const_cast<char*>("Warning"), args, 1);
 XtVaGetValues (msgBox, XmNmwmDecorations, &i, NULL);
@@ -293,8 +304,8 @@ XtSetArg (args [n], XmNeditable, False); n++;
 XtSetArg (args [n], XmNcursorPositionVisible, False); n++;
 XtSetArg (args [n], XmNwordWrap, True); n++;
 XtSetArg (args [n], XmNvalue, pszMsg); n++;
-XtSetArg (args [n], XmNrows, min (nRows, 30)); n++;
-XtSetArg (args [n], XmNcolumns, min (nCols, 120)); n++;
+XtSetArg (args [n], XmNrows, Min (nRows, 30)); n++;
+XtSetArg (args [n], XmNcolumns, Min (nCols, 120)); n++;
 msgText = XmCreateScrolledText (form, const_cast<char*>("help_text"), args, n);
 // Attachment values must be set on the Text widget's PARENT, the ScrolledWindow. This is the object that is positioned.
 XtVaSetValues (XtParent (msgText),
@@ -309,7 +320,7 @@ XtManageChild (form);
 XtSetArg (args [0], XmNfractionBase, 5);
 form = XmCreateForm (pane, const_cast<char*>("form2"), args, 1);
 // The OK button is under the pane's separator and is attached to the left edge of the form. It spreads from
-// position 0 to 1 along the bottom (the form is split into 5 separate grids via XmNfractionBase upon creation).
+// position 0 to 1 along the bottom (the form is split into 5 separate segmentGrids via XmNfractionBase upon creation).
 widget = XmCreatePushButtonGadget (form, const_cast<char*>("Close"), NULL, 0);
 XtVaSetValues (widget,
 			   XmNtopAttachment, XmATTACH_FORM,
@@ -344,13 +355,13 @@ XtAppSetExitFlag (appShell);
 void XmMessageBox (const char* pszMsg, bool bError)
 {
 	Widget	topWid;
-	int		nRows, nCols;
+	int32_t		nRows, nCols;
 
 nRows = MsgSize (const_cast<char*>(pszMsg), nCols);
 if ((nRows > 3) || (nCols > 360))
 	topWid = XmMessageDialog (pszMsg, nRows, nCols, bError);
 else { // use the built-in message box
-	topWid = XtVaAppInitialize (&appShell, "D2X-XL", NULL, 0, &gameData.app.argC, gameData.app.argV, NULL, NULL);
+	topWid = XtVaAppInitialize (&appShell, "D2X-XL", NULL, 0, &gameData.appData.argC, gameData.appData.argV, NULL, NULL);
 	// setup message box text
 	Property args [1];
 	XmString xmString = XmStringCreateLocalized (const_cast<char*>(pszMsg));
@@ -385,10 +396,10 @@ XtDestroyApplicationContext (appShell);
 #	define MB_ICONERROR		1
 #endif
 
-void D2MsgBox (const char *pszMsg, uint nType)
+void D2MsgBox (const char *pszMsg, uint32_t nType)
 {
-gameData.app.bGamePaused = 1;
-if (screen.Width () && screen.Height () && pWarnFunc)
+gameData.appData.bGamePaused = 1;
+if (gameData.renderData.screen.Width () && gameData.renderData.screen.Height () && pWarnFunc)
 	(*pWarnFunc)(pszMsg);
 #if defined (_WIN32)
 else
@@ -399,11 +410,11 @@ else
 		XmMessageBox (pszMsg, nType == MB_ICONERROR);
 	else
 #	endif
-	fprintf (stderr, "D2X-XL: %s\n", pszMsg);
+	PrintLog (0, "D2X-XL: %s\n", pszMsg);
 #elif defined (__macosx__)
 	NativeMacOSXMessageBox (pszMsg);
 #endif
-gameData.app.bGamePaused = 0;
+gameData.appData.bGamePaused = 0;
 }
 
 //------------------------------------------------------------------------------
@@ -434,10 +445,10 @@ exit (1);
 
 //------------------------------------------------------------------------------
 
-static int nLogIndent = 0;
-static int nLastIndent = 0;
+static int32_t nLogIndent = 0;
+static int32_t nLastIndent = 0;
 
-void IndentLog (int nIndent)
+void IndentLog (int32_t nIndent)
 {
 if (nIndent) {
 	if (abs (nIndent) == 1)
@@ -446,20 +457,20 @@ if (nIndent) {
 	}
 nLogIndent += nIndent;
 if (nLogIndent < 0) {
-	PrintLog (0, "Log indentation error!\n");
+	fprintf (fLog, "Log indentation error!\n");
 	nLogIndent = 0;
 	}
 else if (nLogIndent > 30) {
-	PrintLog (0, "Log indentation error!\n");
+	fprintf (fLog, "Log indentation error!\n");
 	nLogIndent = 30;
 	}
 }
 
 //------------------------------------------------------------------------------
 
-int SetIndent (int nIndent)
+int32_t SetIndent (int32_t nIndent)
 {
-int nOldIndent = nLogIndent;
+int32_t nOldIndent = nLogIndent;
 nLogIndent = nIndent;
 return nOldIndent;
 }
@@ -472,15 +483,17 @@ return nOldIndent;
 
 void OpenLogFile (void)
 {
-if (gameStates.app.nLogLevel > 0) {
-	static int nLogId = 0;
-   char fnErr [FILENAME_LEN];
+if (*gameFolders.user.szCache && (gameStates.app.nLogLevel > 0)) {
+	if (CFile::Exist ("d2x.log.bak", gameFolders.user.szCache, 0))
+		CFile::Delete ("d2x.log.bak", gameFolders.user.szCache);
+	if (CFile::Exist ("d2x.log", gameFolders.user.szCache, 0))
+		CFile::Rename ("d2x.log", "d2x.log.bak", gameFolders.user.szCache);
+
+	char fnErr [FILENAME_LEN];
+	sprintf (fnErr, "%sd2x.log", gameFolders.user.szCache);
 #ifdef _WIN32
-	sprintf (fnErr, "%s/d2x.log", gameFolders.szGameDir);
-	while (!(fLog = _fsopen (fnErr, "wt", _SH_DENYWR))) 
-		sprintf (fnErr, "%s/d2x.log.%d", gameFolders.szGameDir, ++nLogId);
+	fLog = _fsopen (fnErr, "wt", _SH_DENYWR);
 #else
-	sprintf (fnErr, "%s/d2x.log", getenv ("HOME"));
 	fLog = fopen (fnErr, "wt");
 #endif
 	}
@@ -488,22 +501,29 @@ if (gameStates.app.nLogLevel > 0) {
 
 //------------------------------------------------------------------------------
 
-void _CDECL_ PrintLog (const int nIndent, const char *fmt, ...)
+void _CDECL_ PrintLog (const int32_t nIndent, const char *fmt, ...)
 {
-if (fLog) {
+#if USE_OPENMP
+#pragma omp critical (PrintLog)
+	{
+#endif
+if (fLog /*&& !gameStates.app.nTraceLevel*/) {
 	if (fmt && *fmt) {
 		va_list arglist;
 			static char	szLogLine [2][100000] = {{'\0'}, {'\0'}};
-			static int nLogLine = 0;
+			static int32_t nLogLine = 0;
 
-		va_start (arglist, fmt);
 		if (nLogIndent > 0)
 			memset (szLogLine [nLogLine], ' ', nLogIndent);
 		else if (nLogIndent < 0)
 			nLogIndent = 0;
 		nLogLine &= 3;
+		va_start (arglist, fmt);
 		vsprintf (szLogLine [nLogLine] + nLogIndent, fmt, arglist);
 		va_end (arglist);
+#if 0
+		if (strstr (szLogLine [nLogLine], "transformation"))
+#endif
 		if (strcmp (szLogLine [nLogLine], szLogLine [!nLogLine])) {
 			fprintf (fLog, szLogLine [nLogLine]);
 			fflush (fLog);
@@ -512,6 +532,63 @@ if (fLog) {
 		}
 	if (nIndent)
 		IndentLog (nIndent);
+	}
+#if USE_OPENMP
+}
+#endif
+}
+
+//------------------------------------------------------------------------------
+
+void PrintCallStack (void)
+{
+int32_t nIndent = nLogIndent;
+SetIndent (0);
+if (!callStack.Buffer ()) 
+	PrintLog (0, "\nCall stack not available\n\n");
+else {
+	PrintLog (0, "\nCall stack:\n\n");
+	int32_t nTraceLevel = gameStates.app.nTraceLevel;
+	gameStates.app.nTraceLevel = 0;
+	for (uint32_t i = 0, h = callStack.ToS (); i < h; i++)
+		callStack [i].PrintToLog ();
+	gameStates.app.nTraceLevel = nTraceLevel;
+	}
+nLogIndent = nIndent;
+}
+
+//------------------------------------------------------------------------------
+
+void TraceCallStack (const int32_t nDirection, const int32_t nLevel, const char *pszFunction, const int32_t nThread, const char *pszFile, const int32_t nLine)
+{
+#pragma omp critical (TraceCallStack)
+//if (nLevel < gameStates.app.nTraceLevel) -- tested before calling TraceCallStack
+	{
+	if (!callStack.Buffer ())
+		callStack.Create (100);
+	if (callStack.Buffer ()) {
+		CStackFrame	f;
+		f.m_pszFunction = pszFunction;
+		f.m_nThread = nThread;
+		if (nDirection > 0) {
+			f.m_pszFile = pszFile;
+			f.m_nLine = nLine;
+#if 1 // DBG
+			if (!callStack.Push (f)) {
+				PrintCallStack ();
+				callStack.Reset ();
+				callStack.Push (f);
+				}
+#else
+			callStack.Push (f);
+#endif
+			}
+		else {
+			for (int32_t i = int32_t (callStack.ToS ()) - 1; i >= 0; i--)
+				if (callStack [i] == f)
+					callStack.Delete (uint32_t (i));
+			}
+		}
 	}
 }
 
@@ -540,16 +617,16 @@ static void SetLogDate (void)
 
 time (&t);
 h = localtime (&t);
-nLogDate = int (h->tm_year + 1900) * 65536 + int (h->tm_mon) * 256 + h->tm_mday;
+nLogDate = int32_t (h->tm_year + 1900) * 65536 + int32_t (h->tm_mon) * 256 + h->tm_mday;
 glHWHash = ~nLogDate;
 }
 
 //------------------------------------------------------------------------------
 //initialize error handling system, and set default message. returns 0=ok
-int _CDECL_ error_init (void (*func)(const char *), const char *fmt, ...)
+int32_t _CDECL_ error_init (void (*func)(const char *), const char *fmt, ...)
 {
 	va_list arglist;
-	int len;
+	int32_t len;
 
 atexit (print_exit_message);		//last thing at exit is print message
 SetLogDate ();
@@ -569,22 +646,30 @@ return 0;
 
 #if 1//DBG
 
-short nDbgSeg = -1;
-short nDbgSide = -1;
-short nDbgFace = -1;
-short nDbgObj = -1;
-short nDbgObjType = -1;
-short nDbgObjId = -1;
-short nDbgModel = -1;
-int nDbgVertex = -1;
-int nDbgBaseTex = -1;
-int nDbgOvlTex = -1;
-int nDbgTexture = -1;
-short nDbgSound = -1;
-short nDbgChannel = -1;
-int nDbgLight = -1;
+int16_t nDbgSeg = -1;
+int16_t nDbgSide = -1;
+int16_t nDbgFace = -1;
+int16_t nDbgObj = -1;
+int16_t nDbgObjType = -1;
+int16_t nDbgObjId = -1;
+int16_t nDbgModel = -1;
+int32_t nDbgVertex = -1;
+int32_t nDbgBaseTex = -1;
+int32_t nDbgOvlTex = -1;
+int32_t nDbgTexture = -1;
+int16_t nDbgSound = -1;
+int16_t nDbgChannel = -1;
+int32_t nDbgLight = -1;
+CBitmap *pDbgBm = NULL;
 
 #endif
+
+//------------------------------------------------------------------------------
+
+void Breakpoint (void)
+{
+PrintLog (0, NULL);
+}
 
 //------------------------------------------------------------------------------
 //eof

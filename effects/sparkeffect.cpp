@@ -33,13 +33,13 @@ CSparkManager sparkManager;
 
 //-----------------------------------------------------------------------------
 
-void CEnergySpark::Setup (short nSegment, ubyte nType)
+void CEnergySpark::Setup (int16_t nSegment, uint8_t nType)
 {
-	CSegment*			segP = SEGMENTS + nSegment;
+	CSegment*			pSeg = SEGMENT (nSegment);
 	CFixVector			vOffs;
 	CFloatVector		vRadf;
 
-vRadf.Assign (segP->m_extents [1] - segP->m_extents [0]);
+vRadf.Assign (pSeg->m_extents [1] - pSeg->m_extents [0]);
 vRadf *= 0.5f;
 if (m_tRender)
 	return;
@@ -49,20 +49,20 @@ if (gameStates.app.nSDLTicks [0] - m_tCreate < SPARK_FRAME_TIME)
 	return;
 m_nType = nType;
 m_tCreate = gameStates.app.nSDLTicks [0];
-if (RandShort () % m_nProb)
+if (Rand (m_nProb))
 	m_nProb--;
 else {
 	vOffs.v.coord.x = F2X (vRadf.v.coord.x - (2 * RandFloat ()) * vRadf.v.coord.x);
 	vOffs.v.coord.y = F2X (vRadf.v.coord.y - (2 * RandFloat ()) * vRadf.v.coord.y);
 	vOffs.v.coord.z = F2X (vRadf.v.coord.z - (2 * RandFloat ()) * vRadf.v.coord.z);
-	m_vPos = segP->Center () + vOffs;
-	if ((vOffs.Mag () > segP->MinRad ()) && segP->Masks (m_vPos, 0).m_center)
+	m_vPos = pSeg->Center () + vOffs;
+	if ((vOffs.Mag () > pSeg->MinRad ()) && pSeg->Masks (m_vPos, 0).m_center)
 		m_nProb = 1;
 	else {
 		m_xSize = I2X (1) + 4 * RandShort ();
 		m_nFrame = 0;
-		m_nRotFrame = rand () % 64;
-		m_nOrient = rand () % 2;
+		m_nRotFrame = Rand (64);
+		m_nOrient = Rand (2);
 		m_tRender = -1;
 		m_bRendered = 0;
 		m_nProb = SPARK_MIN_PROB;
@@ -71,7 +71,7 @@ else {
 			m_vDir.v.coord.y = (I2X (1) / 4) - RandShort ();
 			m_vDir.v.coord.z = (I2X (1) / 4) - RandShort ();
 			CFixVector::Normalize (m_vDir);
-			m_vDir *= ((I2X (1) / (8 + RandShort () % 8)));
+			m_vDir *= (I2X (1) / (8 + Rand (8)));
 			}
 		else
 			m_vDir.SetZero ();
@@ -116,15 +116,26 @@ if (m_tRender) {
 
 void CSparks::Create (void)
 {
-for (int i = 0; i < m_nMaxSparks; i++)
+for (int32_t i = 0; i < m_nMaxSparks; i++)
 	m_sparks [i].Setup (m_nSegment, m_nType);
+}
+
+
+//-----------------------------------------------------------------------------
+
+int32_t CSparks::MaxSparks (int32_t nSegment)
+{
+CSegment *pSeg = SEGMENT ((nSegment < 0) ? m_nSegment : nSegment);
+if (!pSeg)
+	return 0;
+return (uint16_t) gameOpts->render.effects.bEnergySparks * (uint16_t) FRound (pSeg->AvgRadf ());
 }
 
 //-----------------------------------------------------------------------------
 
-void CSparks::Setup (short nSegment, ubyte nType)
+void CSparks::Setup (int16_t nSegment, uint8_t nType)
 {
-m_nMaxSparks = (ushort) (2 * SEGMENTS [nSegment].AvgRadf () + 0.5f);
+m_nMaxSparks = MaxSparks (nSegment);
 if (!m_sparks.Create (m_nMaxSparks))
 	m_nMaxSparks = 0;
 else {
@@ -132,8 +143,8 @@ else {
 	m_nSegment = nSegment;
 	m_nType = nType;
 	m_sparks.Clear ();
-	for (int i = 0; i < m_nMaxSparks; i++)
-		m_sparks [i].m_nProb = RandShort () % SPARK_MIN_PROB + 1;
+	for (int32_t i = 0; i < m_nMaxSparks; i++)
+		m_sparks [i].m_nProb = Rand (SPARK_MIN_PROB + 1);
 	}
 }
 
@@ -142,12 +153,12 @@ else {
 void CSparks::Render (void)
 {
 m_bUpdate = 1;
-//if (!automap.Display () || automap.m_bFull || automap.m_visible [m_nSegment])
-if (gameData.render.mine.Visible (m_nSegment)) {
+//if (!automap.Active () || automap.m_bFull || automap.m_visible [m_nSegment])
+if (gameData.renderData.mine.Visible (m_nSegment)) {
 //#if USE_OPENMP > 1
 //#	pragma omp parallel for
 //#endif
-	for (int i = 0; i < m_nMaxSparks; i++)
+	for (int32_t i = 0; i < m_nMaxSparks; i++)
 		m_sparks [i].Render ();
 	}
 }
@@ -157,10 +168,17 @@ if (gameData.render.mine.Visible (m_nSegment)) {
 void CSparks::Update (void)
 {
 if (m_bUpdate) {
+	if (m_nSegment >= 0) {
+		int32_t nMaxSparks = MaxSparks ();
+		if (nMaxSparks && (nMaxSparks != m_nMaxSparks)) {
+			m_sparks.Destroy ();
+			Setup (m_nSegment, m_nType);
+			}
+		}
 #if USE_OPENMP //> 1
 #	pragma omp parallel for
 #endif
-	for (int i = 0; i < m_nMaxSparks; i++)
+	for (int32_t i = 0; i < m_nMaxSparks; i++)
 		m_sparks [i].Update ();
 	Create ();
 	m_bUpdate = 0;
@@ -171,56 +189,56 @@ if (m_bUpdate) {
 //-----------------------------------------------------------------------------
 //-----------------------------------------------------------------------------
 
-inline int CSparkManager::Type (short nObjProducer)
+inline int32_t CSparkManager::Type (int16_t nObjProducer)
 {
-return SEGMENTS [m_segments [nObjProducer]].m_function == SEGMENT_FUNC_FUELCENTER;
+return SEGMENT (m_segments [nObjProducer])->m_function == SEGMENT_FUNC_FUELCENTER;
 }
 
 //-----------------------------------------------------------------------------
 
-inline CSparks& CSparkManager::Sparks (short nObjProducer)
+inline CSparks& CSparkManager::Sparks (int16_t nObjProducer)
 {
 return m_sparks [nObjProducer];
 }
 
 //-----------------------------------------------------------------------------
 
-void CSparkManager::SetupSparks (short nObjProducer)
+void CSparkManager::SetupSparks (int16_t nObjProducer)
 {
 m_sparks [nObjProducer].Setup (m_segments [nObjProducer], Type (nObjProducer));
 }
 
 //-----------------------------------------------------------------------------
 
-void CSparkManager::UpdateSparks (short nObjProducer)
+void CSparkManager::UpdateSparks (int16_t nObjProducer)
 {
 m_sparks [nObjProducer].Update ();
 }
 
 //-----------------------------------------------------------------------------
 
-void CSparkManager::RenderSparks (short nObjProducer)
+void CSparkManager::RenderSparks (int16_t nObjProducer)
 {
 m_sparks [nObjProducer].Render ();
 }
 
 //-----------------------------------------------------------------------------
 
-void CSparkManager::DestroySparks (short nObjProducer)
+void CSparkManager::DestroySparks (int16_t nObjProducer)
 {
 m_sparks [nObjProducer].Destroy ();
 }
 
 //-----------------------------------------------------------------------------
 
-int CSparkManager::BuildSegList (void)
+int32_t CSparkManager::BuildSegList (void)
 {
-	CSegment*	segP = SEGMENTS.Buffer ();
-	short			nSegment;
+	CSegment*	pSeg = SEGMENTS.Buffer ();
+	int16_t		nSegment;
 
 m_nSegments = 0;
-for (nSegment = 0; nSegment < gameData.segs.nSegments; nSegment++, segP++)
-	if ((segP->m_function == SEGMENT_FUNC_FUELCENTER) || (segP->m_function == SEGMENT_FUNC_REPAIRCENTER))
+for (nSegment = 0; nSegment < gameData.segData.nSegments; nSegment++, pSeg++)
+	if ((pSeg->m_function == SEGMENT_FUNC_FUELCENTER) || (pSeg->m_function == SEGMENT_FUNC_REPAIRCENTER))
 		m_segments [m_nSegments++] = nSegment;
 return m_nSegments;
 }
@@ -239,7 +257,7 @@ void CSparkManager::Setup (void)
 {
 SEM_ENTER (SEM_SPARKS)
 if ((gameStates.render.bHaveSparks = (gameOpts->render.effects.bEnabled && gameOpts->render.effects.bEnergySparks)) && sparks.Bitmap () && (BuildSegList () > 0)) {
-	for (short i = 0; i < m_nSegments; i++)
+	for (int16_t i = 0; i < m_nSegments; i++)
 		SetupSparks (i);
 	}	
 SEM_LEAVE (SEM_SPARKS)
@@ -250,7 +268,7 @@ SEM_LEAVE (SEM_SPARKS)
 void CSparkManager::Render (void)
 {
 if (gameStates.render.bHaveSparks) {
-	for (short i = 0; i < m_nSegments; i++)
+	for (int16_t i = 0; i < m_nSegments; i++)
 		RenderSparks (i);
 	}
 }
@@ -260,7 +278,7 @@ if (gameStates.render.bHaveSparks) {
 void CSparkManager::Update (void)
 {
 if ((gameStates.render.bHaveSparks = (gameOpts->render.effects.bEnabled && gameOpts->render.effects.bEnergySparks))) {
-	for (short i = 0; i < m_nSegments; i++)
+	for (int16_t i = 0; i < m_nSegments; i++)
 		UpdateSparks (i);
 	}
 }
@@ -271,7 +289,7 @@ void CSparkManager::Destroy (void)
 {
 SEM_ENTER (SEM_SPARKS)
 if (gameStates.render.bHaveSparks) {
-	for (int i = 0; i < m_nSegments; i++)
+	for (int32_t i = 0; i < m_nSegments; i++)
 		DestroySparks (i);
 	gameStates.render.bHaveSparks = 0;
 	}

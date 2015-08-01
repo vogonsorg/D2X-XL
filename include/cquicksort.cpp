@@ -13,11 +13,11 @@ _T h = *left;
 //-----------------------------------------------------------------------------
 
 template <typename _T>
-void CQuickSort< _T >::SortAscending (_T* buffer, int left, int right) 
+void CQuickSort< _T >::SortAscending (_T* buffer, int32_t left, int32_t right) 
 {
-	int	l = left,
-			r = right;
-	_T		median = buffer [(l + r) / 2];
+	int32_t	l = left,
+				r = right;
+	_T			median = buffer [(l + r) / 2];
 
 do {
 	while (buffer [l] < median)
@@ -40,11 +40,11 @@ if (left < r)
 //-----------------------------------------------------------------------------
 
 template <typename _T>
-void CQuickSort< _T >::SortDescending (_T* buffer, int left, int right) 
+void CQuickSort< _T >::SortDescending (_T* buffer, int32_t left, int32_t right) 
 {
-	int	l = left,
-			r = right;
-	_T		median = buffer [(l + r) / 2];
+	int32_t	l = left,
+				r = right;
+	_T			median = buffer [(l + r) / 2];
 
 do {
 	while (buffer [l] > median)
@@ -67,11 +67,11 @@ if (left < r)
 //-----------------------------------------------------------------------------
 
 template <typename _T>
-void CQuickSort< _T >::SortAscending (_T* buffer, int left, int right, comparator compare) 
+void CQuickSort< _T >::SortAscending (_T* buffer, int32_t left, int32_t right, comparator compare) 
 {
-	int	l = left,
-			r = right;
-	_T		median = buffer [(l + r) / 2];
+	int32_t	l = left,
+				r = right;
+	_T			median = buffer [(l + r) / 2];
 
 do {
 	while (compare (buffer + l, &median) < 0)
@@ -94,11 +94,11 @@ if (left < r)
 //-----------------------------------------------------------------------------
 
 template <typename _T>
-void CQuickSort< _T >::SortDescending (_T* buffer, int left, int right, comparator compare) 
+void CQuickSort< _T >::SortDescending (_T* buffer, int32_t left, int32_t right, comparator compare) 
 {
-	int	l = left,
-			r = right;
-	_T		m = buffer [(l + r) / 2];
+	int32_t	l = left,
+				r = right;
+	_T			m = buffer [(l + r) / 2];
 
 do {
 	while (compare (buffer + l, &m) > 0)
@@ -121,9 +121,9 @@ if (left < r)
 // ----------------------------------------------------------------------------
 
 template <typename _T>
-int CQuickSort< _T >::BinSearch (_T* buffer, int l, int r, _T key)
+int32_t CQuickSort< _T >::BinSearch (_T* buffer, int32_t l, int32_t r, _T key)
 {
-	int	m;
+	int32_t	m;
 
 do {
 	m = (l + r) / 2;

@@ -56,25 +56,25 @@
 //------------------------------------------------------------------------------
 
 static struct {
-	int	nDlTimeout;
-	int	nAutoDl;
-	int	nExpertMode;
-	int	nScreenshots;
+	int32_t	nDlTimeout;
+	int32_t	nAutoDl;
+	int32_t	nExpertMode;
+	int32_t	nScreenshots;
 } miscOpts;
 
 static const char* pszExpertMode [3];
 
 //------------------------------------------------------------------------------
 
-extern int screenShotIntervals [];
+extern int32_t screenShotIntervals [];
 
-int MiscellaneousCallback (CMenu& menu, int& key, int nCurItem, int nState)
+int32_t MiscellaneousCallback (CMenu& menu, int32_t& key, int32_t nCurItem, int32_t nState)
 {
 if (nState)
 	return nCurItem;
 
 	CMenuItem * m;
-	int			v;
+	int32_t			v;
 
 if ((m = menu ["expert mode"])) {
 	v = m->Value ();
@@ -102,7 +102,7 @@ if ((m = menu ["screenshots"])) {
 	}
 
 if ((m = menu ["auto download"])) {
-	int v = m->Value ();
+	int32_t v = m->Value ();
 	if (extraGameInfo [0].bAutoDownload != v) {
 		extraGameInfo [0].bAutoDownload = v;
 		key = -2;
@@ -139,14 +139,14 @@ pszExpertMode [2] = TXT_FULL;
 
 //------------------------------------------------------------------------------
 
-void DefaultMiscSettings (void);
+void DefaultMiscSettings (bool bSetup = false);
 
 void MiscellaneousMenu (void)
 {
-	static int choice = 0;
+	static int32_t choice = 0;
 
 	CMenu m;
-	int	i;
+	int32_t	i;
 
 InitStrings ();
 
@@ -156,7 +156,7 @@ else if (gameOpts->app.bExpertMode)
 	gameOpts->app.bExpertMode = 1;
 
 #if UDP_SAFEMODE
-	int	optSafeUDP;
+	int32_t	optSafeUDP;
 #endif
 	char  szSlider [50];
 
@@ -200,6 +200,10 @@ do {
 				m.AddSlider ("download timeout", szSlider + 1, downloadManager.GetTimeoutIndex (), 0, downloadManager.MaxTimeoutIndex (), KEY_T, HTX_MISC_DLTIMEOUT);
 				}
 			}
+		if (gameOpts->render.color.bConfigurable) {
+			m.AddText ("", "");
+			m.AddCheck ("rebuild lightmaps", TXT_REBUILD_LIGHTMAPS, gameStates.app.bRebuildLightmaps, KEY_R, HTX_REBUILD_LIGHTMAPS);
+			}
 		}
 
 	do {
@@ -218,6 +222,8 @@ do {
 		GET_VAL (gameOpts->app.bEpilepticFriendly, "epileptic friendly");
 		GET_VAL (gameOpts->app.bColorblindFriendly, "colorblind friendly");
 		GET_VAL (gameOpts->app.bNotebookFriendly, "notebook friendly");
+		if (gameOpts->render.color.bConfigurable)
+			GET_VAL (gameStates.app.bRebuildLightmaps, "rebuild lightmaps");
 		}
 	} while (i == -2);
 

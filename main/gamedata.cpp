@@ -70,9 +70,21 @@
 #include "lightcluster.h"
 #include "multi.h"
 #include "marker.h"
+#include "trackobject.h"
 #if USE_DACS
 #	include "dialheap.h"
 #endif
+
+// ----------------------------------------------------------------------------
+
+void DefaultApplicationSettings (bool bSetup = false);
+void DefaultCockpitSettings (bool bSetup = false);
+void DefaultGameplaySettings (bool bSetup = false);
+void DefaultKeyboardSettings (bool bSetup = false);
+void DefaultMiscSettings (bool bSetup = false);
+void DefaultPhysicsSettings (bool bSetup = false);
+void DefaultRenderSettings (bool bSetup = false);
+void DefaultSmokeSettings (bool bSetup = false);
 
 // ----------------------------------------------------------------------------
 
@@ -84,6 +96,56 @@ memset (&irrData, 0, sizeof (irrData));
 InitEndLevelData ();
 InitStringPool ();
 SetDataVersion (-1);
+}
+
+//------------------------------------------------------------------------------
+
+void CGameData::SetStereoSeparation (int32_t nFrame)
+{
+ogl.SetStereoSeparation (ogl.IsSideBySideDevice () ? gameOpts->render.stereo.xSeparation [ogl.IsOculusRift ()] * nFrame : 0);
+}
+
+//------------------------------------------------------------------------------
+
+int32_t CGameData::StereoOffset2D (void)
+{
+#if 0
+return 1;
+#else
+if (gameStates.render.nWindow [0])
+	return 0;
+if (ogl.IsOculusRift ())
+	return (int32_t) DRound (X2D (ogl.StereoSeparation ()) * renderData.frame.Width () * double (WORLDSCALE) * 0.00125);
+if (ogl.IsSideBySideDevice ())
+	return (int32_t) DRound (X2D (ogl.StereoSeparation ()) * renderData.frame.Width () * 0.025);
+return 0;
+#endif
+}
+
+// ----------------------------------------------------------------------------
+
+int32_t CGameData::FloatingStereoOffset2D (int32_t x, bool bForce)
+{
+#if 0
+return 1;
+#else
+if (!bForce && (gameStates.render.nWindow [0] != 0))
+	return 0;
+
+	float scale [2];
+	float w = (float) renderData.frame.Width ();
+	float s = X2F (ogl.StereoSeparation ());
+
+if (ogl.IsOculusRift ()) 
+	scale [1] = s * w * float (WORLDSCALE) * 0.00125f;
+else if (ogl.IsSideBySideDevice ())
+	scale [1] = s * w * 0.025f;
+else
+	return 0;
+	
+scale [0] = (s < 0) ? float (w - x) / w : float (x) / w;
+return (int32_t) FRound ((3.0f * scale [0] - 1.0f) * scale [1]);
+#endif
 }
 
 // ----------------------------------------------------------------------------
@@ -109,8 +171,8 @@ if (info.visibleVertices) {
 	delete info.visibleVertices;
 	info.visibleVertices = NULL;
 	}
-for (int i = 0; i < MAX_THREADS; i++)
-	render.activeLightsP [i] = NULL;
+for (int32_t i = 0; i < MAX_THREADS; i++)
+	render.pActiveLights [i] = NULL;
 }
 
 // ----------------------------------------------------------------------------
@@ -154,13 +216,15 @@ CLightRenderData::CLightRenderData ()
 CLEAR (vPosf);
 memset (xDistance, 0, sizeof (xDistance));
 CLEAR (nVerts);
+nType = 0;
 nTarget = 0;	//lit segment/face
 nFrame = 0;
 bShadow = 0;
 bLightning = 0;
 bExclusive = 0;
+bState = 0;
 CLEAR (bUsed);
-CLEAR (activeLightsP);
+CLEAR (pActiveLights);
 }
 
 // ----------------------------------------------------------------------------
@@ -185,7 +249,7 @@ nVariable = 0;
 nThread = -1;
 material.bValid = 0;
 memset (nHeadlights, 0xff, sizeof (nHeadlights));
-int i;
+int32_t i;
 for (i = 0; i < MAX_THREADS; i++)
 	active [i].Clear ();
 for (i = 0; i < 2; i++)
@@ -200,7 +264,7 @@ CREATE (nearestSegLights, LEVEL_SEGMENTS * MAX_NEAREST_LIGHTS, 0xff);
 CREATE (nearestVertLights, LEVEL_VERTICES * MAX_NEAREST_LIGHTS, 0xff);
 CREATE (variableVertLights, LEVEL_VERTICES, 0xff);
 CREATE (owners, LEVEL_OBJECTS, (char) 0xff);
-for (int i = 0; i < MAX_THREADS; i++)
+for (int32_t i = 0; i < MAX_THREADS; i++)
 	CREATE (active [i], MAX_OGL_LIGHTS, 0);
 return true;
 }
@@ -213,7 +277,7 @@ DESTROY (nearestSegLights);
 DESTROY (nearestVertLights);
 DESTROY (variableVertLights);
 DESTROY (owners);
-int i;
+int32_t i;
 for (i = 0; i < MAX_THREADS; i++)
 	DESTROY (active [i]);
 for (i = 0; i < 2; i++)
@@ -303,6 +367,7 @@ lightManager.Destroy ();
 
 CShadowData::CShadowData ()
 {
+Init ();
 }
 
 // ----------------------------------------------------------------------------
@@ -311,7 +376,7 @@ void CShadowData::Init (void)
 {
 nLight = 0;
 nLights = 0;
-lightP = NULL;
+pLight = NULL;
 nShadowMaps = 0;
 memset (&lightSource, 0, sizeof (lightSource));
 memset (&vLightPos, 0, sizeof (vLightPos));
@@ -350,11 +415,15 @@ tPulse = 0;
 
 CVisibilityData::CVisibilityData ()
 {
+nSegments = 0;
+nVisible = 0;
+nVisited = 0;
+nProcessed = 0;
 }
 
 //------------------------------------------------------------------------------
 
-bool CVisibilityData::Create (int nState)
+bool CVisibilityData::Create (int32_t nState)
 {
 if (nState == 0) {
 	CREATE (points, LEVEL_VERTICES, 0);
@@ -368,7 +437,7 @@ else {
 	CREATE (bVisible, LEVEL_SEGMENTS, 0);
 	CREATE (bProcessed, LEVEL_SEGMENTS, 0);
 	CREATE (nDepth, LEVEL_SEGMENTS, 0);
-	for (int i = 0; i < 2; i++)
+	for (int32_t i = 0; i < 2; i++)
 		CREATE (zRef [i], LEVEL_SEGMENTS, 0);
 	CREATE (portals, LEVEL_SEGMENTS * 6, 0);
 	CREATE (position, LEVEL_SEGMENTS, 0);
@@ -378,7 +447,7 @@ return true;
 
 //------------------------------------------------------------------------------
 
-bool CVisibilityData::Resize (int nLength)
+bool CVisibilityData::Resize (int32_t nLength)
 {
 return points.Resize ((nLength < 0) ? LEVEL_VERTICES : nLength) != NULL;
 }
@@ -392,7 +461,7 @@ DESTROY (bVisited);
 DESTROY (bVisible);
 DESTROY (bProcessed);
 DESTROY (nDepth);
-for (int i = 0; i < 2; i++)
+for (int32_t i = 0; i < 2; i++)
 	DESTROY (zRef [i]);
 DESTROY (portals);
 DESTROY (position);
@@ -403,20 +472,22 @@ DESTROY (points);
 
 CMineRenderData::CMineRenderData ()
 {
+bSetAutomapVisited = 0;
+nObjRenderSegs = 0;
 }
 
 //------------------------------------------------------------------------------
 
-bool CMineRenderData::Create (int nState)
+bool CMineRenderData::Create (int32_t nState)
 {
-for (int i = 0, j = gameStates.app.nThreads + 2; i < j; i++)
+for (int32_t i = 0, j = gameStates.app.nThreads + 2; i < j; i++)
 	visibility [i].Create (nState);
 if (nState == 1) {
 	CREATE (objRenderSegList, LEVEL_SEGMENTS, 0);
 	CREATE (renderFaceListP, FACES.nFaces, 0);
-	CREATE (bObjectRendered, gameData.objs.nMaxObjects, 0);
+	CREATE (bObjectRendered, gameData.objData.nMaxObjects, 0);
 	CREATE (bRenderSegment, LEVEL_SEGMENTS, 0);
-	CREATE (nRenderObjList, gameData.objs.nMaxObjects, 0);
+	CREATE (nRenderObjList, gameData.objData.nMaxObjects, 0);
 	CREATE (bCalcVertexColor, LEVEL_VERTICES, 0);
 	CREATE (bAutomapVisited, LEVEL_SEGMENTS, 0);
 	CREATE (bAutomapVisible, LEVEL_SEGMENTS, 0);
@@ -427,9 +498,9 @@ return true;
 
 //------------------------------------------------------------------------------
 
-bool CMineRenderData::Resize (int nLength)
+bool CMineRenderData::Resize (int32_t nLength)
 {
-for (int i = 0, j = gameStates.app.nThreads + 2; i < j; i++)
+for (int32_t i = 0, j = gameStates.app.nThreads + 2; i < j; i++)
 	if (!visibility [i].Resize (nLength))
 		return false;
 return true;
@@ -439,7 +510,7 @@ return true;
 
 void CMineRenderData::Destroy (void)
 {
-for (int i = 0, j = gameStates.app.nThreads + 2; i < j; i++)
+for (int32_t i = 0, j = gameStates.app.nThreads + 2; i < j; i++)
 	visibility [i].Destroy ();
 DESTROY (objRenderSegList);
 DESTROY (renderFaceListP);
@@ -454,9 +525,68 @@ DESTROY (bRadarVisited);
 
 //------------------------------------------------------------------------------
 
+CVertColorData::CVertColorData ()
+{
+memset (this, 0, sizeof (*this)); 
+SetAmbientLight (DEFAULT_AMBIENT_LIGHT);
+SetSpecularLight (DEFAULT_SPECULAR_LIGHT);
+InitLight ();
+}
+
+//------------------------------------------------------------------------------
+
+void CVertColorData::InitLight (void)
+{
+matAmbient.Set (AmbientLight (), AmbientLight (), AmbientLight (), 1.0f);
+matDiffuse.Set (DiffuseLight (), DiffuseLight (), DiffuseLight (), 1.0f);
+matSpecular.Set (SpecularLight (), SpecularLight (), SpecularLight (), 1.0f);
+}
+
+//------------------------------------------------------------------------------
+
+#if DBG
+
+void CVertColorData::SetAmbientLight (int32_t nLight) 
+{
+nAmbientLight = Clamp (nLight, 0, 100);
+nSpecularLight = Min (nSpecularLight, 100 - nAmbientLight); 
+InitLight ();
+}
+
+//------------------------------------------------------------------------------
+
+void CVertColorData::SetSpecularLight (int32_t nLight) 
+{
+nSpecularLight = Clamp (nLight, 0, 100);
+nAmbientLight = Min (nAmbientLight, 100 - nSpecularLight); 
+InitLight ();
+}
+
+#endif
+
+//------------------------------------------------------------------------------
+
 CRenderData::CRenderData ()
 {
 transpColor = DEFAULT_TRANSPARENCY_COLOR; //transparency color bitmap index
+dAspect = 1.0;
+fBrightness = 1.0f;
+nTotalObjects = 0;
+nTotalFaces = 0;
+nUsedFaces = 0;
+nTotalLights = 0;
+nTotalSprites = 0;
+nColoredFaces = 0;
+nMaxLights = 32;
+nPowerupFilter = 0;
+nShaderChanges = 0;
+nStateChanges = 0;
+nStereoOffsetType = 0;
+xFlashEffect = 0;
+xTimeFlashLastPlayed = 0;
+zMin = zMax = 0;
+vertexList = NULL;
+pVertex = NULL;
 }
 
 //------------------------------------------------------------------------------
@@ -465,7 +595,7 @@ void CRenderData::Init (void)
 {
 xFlashEffect = 0;
 xTimeFlashLastPlayed = 0;
-vertP = NULL;
+pVertex = NULL;
 zMin = 0;
 zMax = 0;
 dAspect = 0;
@@ -478,13 +608,9 @@ nColoredFaces = 0;
 nStateChanges = 0;
 nShaderChanges = 0;
 nPowerupFilter = 0;
-#if 1
+nStereoOffsetType = STEREO_OFFSET_NONE;
 fAttScale [0] = 0.05f;
 fAttScale [1] = 0.005f;
-#else
-fAttScale [0] = 0.625f;
-fAttScale [1] = 0.0625f;
-#endif
 faceList.Clear ();
 }
 
@@ -505,10 +631,183 @@ bPlayerMessage = 1;
 
 // ----------------------------------------------------------------------------
 
+bool CRiftData::Create (void)
+{
+#if OCULUS_RIFT
+gameData.renderData.rift.m_bAvailable = 0;
+if (gameOpts->render.bUseRift) {
+	OVR::System::Init (OVR::Log::ConfigureDefaultLog (OVR::LogMask_All));
+	m_pManager = *OVR::DeviceManager::Create();
+	if (m_pManager) {
+		//m_pManager->SetMessageHandler(this);
+
+		// Release Sensor/HMD in case this is a retry.
+		m_pSensorP.Clear ();
+		m_pHMD.Clear ();
+		// RenderParams.MonitorName.Clear();
+		m_pHMD = *m_pManager->EnumerateDevices<OVR::HMDDevice> ().CreateDevice ();
+		if (m_pHMD) {
+			m_pSensorP = *m_pHMD->GetSensor ();
+
+			// This will initialize m_hmdInfo with information about configured IPD,
+			// screen size and other variables needed for correct projection.
+			// We pass HMD DisplayDeviceName into the renderer to select the
+			// correct monitor in full-screen mode.
+			if (m_pHMD->GetDeviceInfo (&m_hmdInfo))	{            
+				// RenderParams.MonitorName = m_hmdInfo.DisplayDeviceName;
+				// RenderParams.DisplayId = m_hmdInfo.DisplayId;
+				m_stereoConfig.SetHMDInfo (m_hmdInfo);
+				m_stereoConfig.SetDistortionFitPointVP (-1, 0);
+				m_renderScale = m_stereoConfig.GetDistortionScale (); 
+				m_eyes [0] = m_stereoConfig.GetEyeRenderParams (OVR::Util::Render::StereoEye_Left);
+				m_eyes [1] = m_stereoConfig.GetEyeRenderParams (OVR::Util::Render::StereoEye_Right);
+				m_fov = m_stereoConfig.GetYFOVDegrees ();
+				float viewCenter = m_hmdInfo.HScreenSize * 0.25f;
+				float eyeProjectionShift = viewCenter - m_hmdInfo.LensSeparationDistance * 0.5f;
+				m_projectionCenterOffset = 4.0f * eyeProjectionShift / m_hmdInfo.HScreenSize;
+				}
+			}
+		else {            
+			// If we didn't detect an HMD, try to create the sensor directly.
+			// This is useful for debugging sensor interaction; it is not needed in
+			// a shipping app.
+			m_pSensorP = *m_pManager->EnumerateDevices<OVR::SensorDevice> ().CreateDevice ();
+			}
+		}
+	m_nResolution = HResolution () > 1280;
+	// If there was a problem detecting the Rift, display appropriate message.
+
+	const char* detectionMessage = NULL;
+
+	if (!m_pManager)
+		detectionMessage = "Cannot initialize Oculus Rift system.";
+	if (!m_pHMD && !m_pSensorP)
+		detectionMessage = "Oculus Rift not detected.";
+	else if (!m_pHMD)
+		detectionMessage = "Oculus Sensor detected; HMD Display not detected.\n";
+	else if (m_hmdInfo.DisplayDeviceName [0] == '\0')
+		detectionMessage = "Oculus Sensor detected; HMD display EDID not detected.\n";
+	else if (!m_pSensorP) {
+		m_bAvailable = 1;
+		detectionMessage = "Oculus HMD Display detected; Sensor not detected.\n";
+		}
+	else {
+		m_pSensorFusion = new OVR::SensorFusion;
+		m_pSensorFusion->AttachToSensor (m_pSensorP);
+		m_pSensorFusion->SetYawCorrectionEnabled (true);
+#if 0
+		m_magCalTO.Setup (60000); // 1 minute
+		m_magCalTO.Start (-1, true);
+		m_bCalibrating = false;
+#endif
+		m_bAvailable = 2;
+		}
+if (detectionMessage) 
+		PrintLog (0, detectionMessage);
+	}
+#endif
+return m_bAvailable != 0;
+}
+
+// ----------------------------------------------------------------------------
+
+int32_t CRiftData::GetViewMatrix (CFixMatrix& mOrient)
+{
+#if OCULUS_RIFT
+if (Available () < 2)
+	return 0;
+OVR::Quatf q = m_pSensorFusion->GetOrientation ();
+OVR::Matrix4f m (q);
+for (int32_t i = 0; i < 3; i++)
+	for (int32_t j = 0; j < 3; j++)
+		mOrient.m.vec [i * 3 + j] = F2X (m.M [i][j]);
+#endif
+return 1;
+}
+
+// ----------------------------------------------------------------------------
+
+#if OCULUS_RIFT
+static inline float AddDeadzone (float v)
+{
+float deadzone = float (gameOpts->input.oculusRift.nDeadzone) * 0.5f;
+
+if ((deadzone <= 0.0f) || (deadzone >= 1.0f))
+	return v;
+
+	float h = 1.0f / (1.0f - deadzone) - 1.0f;
+
+if (v < -deadzone)
+	return (v + deadzone) * (1.0f + h * fabs (v));
+if (v > deadzone)
+	return (v - deadzone) * (1.0f + h * fabs (v));
+return 0.0f;
+}
+#endif
+
+int32_t CRiftData::GetHeadAngles (CAngleVector* angles)
+{
+#if OCULUS_RIFT
+if (Available () < 2)
+	return 0;
+OVR::Quatf q = m_pSensorFusion->GetOrientation ();
+float yaw, pitch, roll;
+q.GetEulerAngles<OVR::Axis_Y, OVR::Axis_X, OVR::Axis_Z>(&yaw, &pitch, &roll);
+if (!angles) 
+	m_center.Set (pitch, roll, yaw);
+else {
+	pitch -= m_center.v.coord.x;
+	roll -= m_center.v.coord.y;
+	yaw -= m_center.v.coord.z;
+	angles->Set (-F2X (AddDeadzone (pitch) * 0.5f), F2X (AddDeadzone (roll) * 0.5f), -F2X (AddDeadzone (yaw) * 0.5f));
+	}
+#endif
+return 1;
+}
+
+// ----------------------------------------------------------------------------
+
+void CRiftData::AutoCalibrate (void)
+{
+#if 0
+if (Available () > 1) {
+	if (m_bCalibrating) {
+		if (!m_magCal.IsAutoCalibrating ()) {
+			m_bCalibrating = false;
+			m_magCalTO.Start (-1, true);
+			}
+		else {
+			m_magCal.UpdateAutoCalibration (*m_pSensorFusion);
+			if (m_magCal.IsCalibrated ()) {
+				m_bCalibrating = false;
+				m_magCalTO.Start (-1);
+				}
+			}
+		}
+	else if (m_magCalTO.Expired (false))
+		m_magCal.BeginAutoCalibration (*m_pSensorFusion);
+	}
+#endif
+}
+
+// ----------------------------------------------------------------------------
+
+void CRiftData::Destroy (void)
+{
+#if OCULUS_RIFT
+if (m_pSensorFusion) {
+	delete m_pSensorFusion;
+	m_pSensorFusion = NULL;
+	}
+#endif
+}
+
+// ----------------------------------------------------------------------------
+
 bool CRenderData::Create (void)
 {
 Destroy ();
-CREATE (gameData.render.faceList, LEVEL_FACES, 0);
+CREATE (gameData.renderData.faceList, LEVEL_FACES, 0);
 Init ();
 return true;
 }
@@ -517,7 +816,8 @@ return true;
 
 void CRenderData::Destroy (void)
 {
-DESTROY (gameData.render.faceList);
+rift.Destroy ();
+DESTROY (gameData.renderData.faceList);
 faceIndex.Destroy ();
 }
 
@@ -525,6 +825,20 @@ faceIndex.Destroy ();
 
 CFaceData::CFaceData ()
 {
+iColor = 0;
+nVertices = 0;
+iVertices = 0;
+iNormals = 0;
+iLMapTexCoord = 0;
+iTexCoord = 0;
+iOvlTexCoord = 0;
+nFaces = 0;
+nTriangles = 0;
+slidingFaces = NULL;
+pIndex = NULL;
+vboDataHandle = 0;
+vboIndexHandle = 0;
+pVertex = NULL;
 }
 
 //------------------------------------------------------------------------------
@@ -534,8 +848,8 @@ void CFaceData::Init (void)
 slidingFaces = NULL;
 vboDataHandle = 0;
 vboIndexHandle = 0;
-vertexP = NULL;
-indexP = NULL;
+pVertex = NULL;
+pIndex = NULL;
 nTriangles = 0;
 nVertices = 0;
 iVertices = 0;
@@ -552,7 +866,7 @@ bool CFaceData::Create (void)
 {
 Destroy ();
 
-	int nScale = 1 << gameStates.render.nMeshQuality;
+	int32_t nScale = 1 << gameStates.render.nMeshQuality;
 
 CREATE (faces, LEVEL_FACES, 0);
 CREATE (tris, LEVEL_TRIANGLES, 0);
@@ -565,7 +879,7 @@ CREATE (normals, LEVEL_TRIANGLES * 3 * 2, 0);
 CREATE (color, LEVEL_TRIANGLES * 3, 0);
 CREATE (texCoord, LEVEL_TRIANGLES * 2 * 2, 0);
 CREATE (ovlTexCoord, LEVEL_TRIANGLES * 2 * 2, 0);
-CREATE (lMapTexCoord, gameData.segs.nFaces * 3 * 2, 0);
+CREATE (lMapTexCoord, gameData.segData.nFaces * 3 * 2, 0);
 Init ();
 return true;
 }
@@ -574,7 +888,7 @@ return true;
 
 bool CFaceData::Resize (void)
 {
-	int nScale = 1 << gameStates.render.nMeshQuality;
+	int32_t nScale = 1 << gameStates.render.nMeshQuality;
 
 RESIZE (faces, LEVEL_FACES);
 RESIZE (tris, LEVEL_TRIANGLES);
@@ -587,7 +901,7 @@ RESIZE (normals, LEVEL_TRIANGLES * 3 * 2);
 RESIZE (color, LEVEL_TRIANGLES * 3);
 RESIZE (texCoord, LEVEL_TRIANGLES * 2 * 2);
 RESIZE (ovlTexCoord, LEVEL_TRIANGLES * 2 * 2);
-RESIZE (lMapTexCoord, gameData.segs.nFaces * 3 * 2);
+RESIZE (lMapTexCoord, gameData.segData.nFaces * 3 * 2);
 return true;
 }
 
@@ -613,7 +927,8 @@ DESTROY (lMapTexCoord);
 
 CFaceListIndex::CFaceListIndex ()
 {
-gameData.segs.nFaceKeys = -1;
+nUsedKeys = 0;
+gameData.segData.nFaceKeys = -1;
 }
 
 //------------------------------------------------------------------------------
@@ -628,9 +943,9 @@ Destroy ();
 void CFaceListIndex::Create (void)
 {
 Destroy (true);
-roots.Create (gameData.segs.nFaceKeys); //((MAX_WALL_TEXTURES  + MAX_WALL_TEXTURES / 10) * 3);
-tails.Create (gameData.segs.nFaceKeys); //((MAX_WALL_TEXTURES  + MAX_WALL_TEXTURES / 10) * 3);
-usedKeys.Create (gameData.segs.nFaceKeys); //((MAX_WALL_TEXTURES  + MAX_WALL_TEXTURES / 10) * 3);
+roots.Create (gameData.segData.nFaceKeys); //((MAX_WALL_TEXTURES  + MAX_WALL_TEXTURES / 10) * 3);
+tails.Create (gameData.segData.nFaceKeys); //((MAX_WALL_TEXTURES  + MAX_WALL_TEXTURES / 10) * 3);
+usedKeys.Create (gameData.segData.nFaceKeys); //((MAX_WALL_TEXTURES  + MAX_WALL_TEXTURES / 10) * 3);
 Init ();
 }
 
@@ -639,7 +954,7 @@ Init ();
 void CFaceListIndex::Destroy (bool bRebuild)
 {
 if (!bRebuild)
-	gameData.segs.nFaceKeys = -1;
+	gameData.segData.nFaceKeys = -1;
 nUsedKeys = 0;
 roots.Destroy ();
 tails.Destroy ();
@@ -663,11 +978,20 @@ CSegmentData::CSegmentData ()
 {
 nMaxSegments = MAX_SEGMENTS_D2X;
 nLevelVersion = 0;
-nVertices = 0;
 nSegments = 0;
+nLastSegment = 0;
+nSlideSegs = 0;
+nVertices = 0;
+nLastVertex = 0;
+nFaces = 0;
+nFaceVerts = 0;
+nFaceKeys = 0;
+fRad = 20.0f;
+xDistScale = 0;
 vMin.SetZero ();
 vMax.SetZero ();
 CLEAR (szLevelFilename);
+bHaveSlideSegs = 0;
 }
 
 //------------------------------------------------------------------------------
@@ -681,18 +1005,23 @@ nLastSegment = 0;
 nFaces = 0;
 bHaveSlideSegs = 0;
 nSlideSegs = 0;
+nFogSegments [0] =
+nFogSegments [1] =
+nFogSegments [2] =
+nFogSegments [3] = 0;
 }
 
 // ----------------------------------------------------------------------------
 
-bool CSegmentData::Create (int nSegments, int nVertices)
+bool CSegmentData::Create (int32_t nSegments, int32_t nVertices)
 {
-	int i;
+	int32_t i;
 
 this->nSegments = nSegments;
 this->nVertices = nVertices;
 CREATE (vertices, LEVEL_VERTICES, 0);
 CREATE (fVertices, LEVEL_VERTICES, 0);
+CREATE (vertexOwners, LEVEL_VERTICES, 0xFF);
 CREATE (segments, LEVEL_SEGMENTS, 0);
 #if CALC_SEGRADS
 CREATE (segRads [0], LEVEL_SEGMENTS, 0);
@@ -713,10 +1042,10 @@ for (i = 0; i < LEVEL_SEGMENTS; i++)
 Init ();
 #if 0
 #	if BIDIRECTIONAL_DACS
-dialHeaps [0].Create (gameData.segs.nSegments);
-dialHeaps [1].Create (gameData.segs.nSegments);
+dialHeaps [0].Create (gameData.segData.nSegments);
+dialHeaps [1].Create (gameData.segData.nSegments);
 #	else
-dialHeap.Create (gameData.segs.nSegments);
+dialHeap.Create (gameData.segData.nSegments);
 #	endif
 #endif
 return true; //faces.Create ();
@@ -726,38 +1055,47 @@ return true; //faces.Create ();
 
 bool CSegmentData::Resize (void)
 {
-return gameData.render.mine.Resize () &&
-		 gameData.segs.vertices.Resize (LEVEL_VERTICES) &&
-		 gameData.segs.fVertices.Resize (LEVEL_VERTICES);
+return gameData.renderData.mine.Resize () &&
+		 gameData.segData.vertices.Resize (LEVEL_VERTICES) &&
+		 gameData.segData.fVertices.Resize (LEVEL_VERTICES) &&
+		 gameData.segData.vertexOwners.Resize (LEVEL_VERTICES);
 }
 
 // ----------------------------------------------------------------------------
 
 void CSegmentData::Destroy (void)
 {
-DESTROY (gameData.segs.vertices);
-DESTROY (gameData.segs.fVertices);
+DESTROY (gameData.segData.vertices);
+DESTROY (gameData.segData.fVertices);
+DESTROY (gameData.segData.vertexOwners);
 DESTROY (SEGMENTS);
 #if CALC_SEGRADS
-DESTROY (gameData.segs.segRads [0]);
-DESTROY (gameData.segs.segRads [1]);
-DESTROY (gameData.segs.extent);
+DESTROY (gameData.segData.segRads [0]);
+DESTROY (gameData.segData.segRads [1]);
+DESTROY (gameData.segData.extent);
 #endif
-DESTROY (gameData.segs.segCenters [0]);
-DESTROY (gameData.segs.segCenters [1]);
-DESTROY (gameData.segs.sideCenters);
-DESTROY (gameData.segs.bSegVis);
-DESTROY (gameData.segs.bLightVis);
-for (int i = 0; i < LEVEL_SEGMENTS; i++)
-	gameData.segs.segDistTable [i].Destroy ();
-DESTROY (gameData.segs.segDistTable);
-DESTROY (gameData.segs.slideSegs);
-DESTROY (gameData.segs.segFaces);
-gameData.segs.grids [0].Destroy ();
-gameData.segs.grids [1].Destroy ();
+DESTROY (gameData.segData.segCenters [0]);
+DESTROY (gameData.segData.segCenters [1]);
+DESTROY (gameData.segData.sideCenters);
+DESTROY (gameData.segData.bSegVis);
+DESTROY (gameData.segData.bLightVis);
+for (int32_t i = 0; i < LEVEL_SEGMENTS; i++)
+	gameData.segData.segDistTable [i].Destroy ();
+DESTROY (gameData.segData.segDistTable);
+DESTROY (gameData.segData.slideSegs);
+DESTROY (gameData.segData.segFaces);
+DESTROY (gameData.segData.edges);
+for (int32_t i = 0; i < 2; i++) {
+	DESTROY (gameData.segData.edgeVertexData [i].m_vertices);
+	DESTROY (gameData.segData.edgeVertexData [i].m_dists);
+	}
+gameData.segData.segmentGrids [0].Destroy ();
+gameData.segData.segmentGrids [1].Destroy ();
+gameData.segData.faceGrid.Destroy ();
 nSegments = 0;
 nFaces = 0;
-faces.Destroy ();
+nEdges = 0;
+faceData.Destroy ();
 #if 0
 #	if BIDIRECTIONAL_DACS
 dialHeaps [0].Destroy ();
@@ -816,7 +1154,7 @@ return v;
 
 // ----------------------------------------------------------------------------
 
-inline int CSegmentGrid::GridIndex (int x, int y, int z)
+inline int32_t CSegmentGrid::GridIndex (int32_t x, int32_t y, int32_t z)
 {
 return z * m_vDim.v.coord.y * m_vDim.v.coord.x + y * m_vDim.v.coord.x + x;
 }
@@ -825,22 +1163,22 @@ return z * m_vDim.v.coord.y * m_vDim.v.coord.x + y * m_vDim.v.coord.x + x;
 
 #define GRID_INDEX(_x,_y,_z)	(((_z) * m_vDim.v.coord.y + (_y)) * m_vDim.v.coord.x + (_x))
 
-bool CSegmentGrid::Create (int nGridSize, int bSkyBox)
+bool CSegmentGrid::Create (int32_t nGridSize, int32_t bSkyBox)
 {
-	CSegment*		segP;
-	tSegGridIndex*	indexP;
+	CSegment*		pSeg;
+	tSegGridIndex*	pIndex;
 	CFixVector		v0, v1;
-	int				size, i, j, x, y, z;
+	int32_t				size, i, j, x, y, z;
 
 Destroy ();
 m_vMin.Set (0x7fffffff, 0x7fffffff, 0x7fffffff);
 m_vMax.Set (-0x7fffffff, -0x7fffffff, -0x7fffffff);
-segP = SEGMENTS.Buffer ();
-for (i = gameData.segs.nSegments, j = 0; i; i--, segP++) {
-	if ((segP->m_function == SEGMENT_FUNC_SKYBOX) == bSkyBox) {
+pSeg = SEGMENTS.Buffer ();
+for (i = gameData.segData.nSegments, j = 0; i; i--, pSeg++) {
+	if ((pSeg->m_function == SEGMENT_FUNC_SKYBOX) == bSkyBox) {
 		j++;
-		v0 = segP->m_extents [0];
-		v1 = segP->m_extents [1];
+		v0 = pSeg->m_extents [0];
+		v1 = pSeg->m_extents [1];
 		if (m_vMin.v.coord.x > v0.v.coord.x)
 			m_vMin.v.coord.x = v0.v.coord.x;
 		if (m_vMin.v.coord.y > v0.v.coord.y)
@@ -869,24 +1207,24 @@ if (!m_index.Create (size))
 	return false;
 m_index.Clear ();
 
-segP = SEGMENTS.Buffer ();
-for (i = gameData.segs.nSegments; i; i--, segP++) {
-	if ((segP->m_function == SEGMENT_FUNC_SKYBOX) == bSkyBox) {
+pSeg = SEGMENTS.Buffer ();
+for (i = gameData.segData.nSegments; i; i--, pSeg++) {
+	if ((pSeg->m_function == SEGMENT_FUNC_SKYBOX) == bSkyBox) {
 #if DBG
-		if (segP - SEGMENTS.Buffer () == nDbgSeg)
-			nDbgSeg = nDbgSeg;
+		if (pSeg - SEGMENTS.Buffer () == nDbgSeg)
+			BRP;
 #endif
-		v0 = segP->m_extents [0] - m_vMin;
-		v1 = segP->m_extents [1] - m_vMin;
+		v0 = pSeg->m_extents [0] - m_vMin;
+		v1 = pSeg->m_extents [1] - m_vMin;
 		v0 /= I2X (m_nGridSize);
 		v1 /= I2X (m_nGridSize);
 		ToInt (Floor (v0));
 		ToInt (Floor (v1));
 		for (z = v0.v.coord.z; z <= v1.v.coord.z; z++) {
 			for (y = v0.v.coord.y; y <= v1.v.coord.y; y++) {
-				indexP = &m_index [GridIndex (v0.v.coord.x, y, z)];
-				for (x = v0.v.coord.x; x <= v1.v.coord.x; x++, indexP++) {
-					indexP->nSegments++;
+				pIndex = &m_index [GridIndex (v0.v.coord.x, y, z)];
+				for (x = v0.v.coord.x; x <= v1.v.coord.x; x++, pIndex++) {
+					pIndex->nSegments++;
 					}
 				}
 			}
@@ -894,7 +1232,7 @@ for (i = gameData.segs.nSegments; i; i--, segP++) {
 	}
 
 #if DBG
-int h = 0, k = 0;
+int32_t h = 0, k = 0;
 #endif
 for (i = j = 0; i < size; i++) {
 	m_index [i].nIndex = j;
@@ -911,24 +1249,24 @@ if (!m_segments.Create (j)) {
 	return false;
 	}
 
-segP = SEGMENTS.Buffer ();
-for (i = 0; i < gameData.segs.nSegments; i++, segP++) {
-	if ((segP->m_function == SEGMENT_FUNC_SKYBOX) == bSkyBox) {
+pSeg = SEGMENTS.Buffer ();
+for (i = 0; i < gameData.segData.nSegments; i++, pSeg++) {
+	if ((pSeg->m_function == SEGMENT_FUNC_SKYBOX) == bSkyBox) {
 #if DBG
-		if (segP - SEGMENTS.Buffer () == nDbgSeg)
-			nDbgSeg = nDbgSeg;
+		if (pSeg - SEGMENTS.Buffer () == nDbgSeg)
+			BRP;
 #endif
-		v0 = segP->m_extents [0] - m_vMin;
-		v1 = segP->m_extents [1] - m_vMin;
+		v0 = pSeg->m_extents [0] - m_vMin;
+		v1 = pSeg->m_extents [1] - m_vMin;
 		v0 /= I2X (m_nGridSize);
 		v1 /= I2X (m_nGridSize);
 		ToInt (Floor (v0));
 		ToInt (Floor (v1));
 		for (z = v0.v.coord.z; z <= v1.v.coord.z; z++) {
 			for (y = v0.v.coord.y; y <= v1.v.coord.y; y++) {
-				indexP = &m_index [GridIndex (v0.v.coord.x, y, z)];
-				for (x = v0.v.coord.x; x <= v1.v.coord.x; x++, indexP++)
-					m_segments [indexP->nIndex + indexP->nSegments++] = i;
+				pIndex = &m_index [GridIndex (v0.v.coord.x, y, z)];
+				for (x = v0.v.coord.x; x <= v1.v.coord.x; x++, pIndex++)
+					m_segments [pIndex->nIndex + pIndex->nSegments++] = i;
 				}
 			}
 		}
@@ -947,15 +1285,15 @@ m_segments.Destroy ();
 
 // ----------------------------------------------------------------------------
 
-int CSegmentGrid::GetSegList (CFixVector vPos, short*& listP)
+int32_t CSegmentGrid::GetSegList (CFixVector vPos, int16_t*& listP)
 {
 if (!Available ())
 	return -1;
 vPos -= m_vMin;
 vPos /= I2X (m_nGridSize);
 ToInt (Floor (vPos));
-int i = GRID_INDEX (vPos.v.coord.x, vPos.v.coord.y, vPos.v.coord.z);
-if ((i < 0) || (i >= int (m_index.Length ()))) {
+int32_t i = GRID_INDEX (vPos.v.coord.x, vPos.v.coord.y, vPos.v.coord.z);
+if ((i < 0) || (i >= int32_t (m_index.Length ()))) {
 	listP = NULL;
 	return 0;
 	}
@@ -970,7 +1308,7 @@ CWallData::CWallData ()
 exploding.Create (MAX_EXPLODING_WALLS);
 activeDoors.Create (MAX_DOORS);
 cloaking.Create (MAX_CLOAKING_WALLS);
-for (int i = 0; i < 2; i++)
+for (int32_t i = 0; i < 2; i++)
 	anims [i].Create (MAX_WALL_ANIMS);
 bitmaps.Create (MAX_WALL_ANIMS);
 nWalls = 0;
@@ -998,19 +1336,20 @@ nWalls = 0;
 
 CTriggerData::CTriggerData ()
 {
+
 }
 
 // ----------------------------------------------------------------------------
 
-bool CTriggerData::Create (int nTriggers, bool bObjTriggers)
+bool CTriggerData::Create (int32_t nTriggers, bool bObjTriggers)
 {
 if (bObjTriggers) {
-	objTriggers.Create (nTriggers);
+	triggers [1].Create (nTriggers);
 #if 0
 	objTriggerRefs.Create (MAX_OBJ_TRIGGERS);
 	objTriggerRefs.Clear (0xff);
 #endif
-	m_nObjTriggers = nTriggers;
+	m_nTriggers [1] = nTriggers;
 	}
 else {
 #if 0
@@ -1018,10 +1357,10 @@ else {
 #else
 	CREATE (objTriggerRefs, LEVEL_OBJECTS, 0);
 #endif
-	triggers.Create (nTriggers);
+	triggers [0].Create (nTriggers);
 	delay.Create (nTriggers);
 	delay.Clear (0xff);
-	m_nTriggers = nTriggers;
+	m_nTriggers [0] = nTriggers;
 	}
 return true;
 }
@@ -1033,21 +1372,21 @@ void CTriggerData::Destroy (void)
 #if 0
 firstObjTrigger.Destroy ();
 #endif
-triggers.Destroy ();
-objTriggers.Destroy ();
+triggers [0].Destroy ();
+triggers [1].Destroy ();
 objTriggerRefs.Destroy ();
 delay.Destroy ();
-m_nTriggers = 0;
-m_nObjTriggers = 0;
+m_nTriggers [0] = 0;
+m_nTriggers [1] = 0;
 }
 
 // ----------------------------------------------------------------------------
 
 CEffectData::CEffectData ()
 {
-for (int i = 0; i < 2; i++) {
+for (int32_t i = 0; i < 2; i++) {
 	effects [i].Create (MAX_EFFECTS);
-	vClips [i].Create (MAX_VCLIPS);
+	animations [i].Create (MAX_ANIMATIONS_D2);
 	}
 }
 
@@ -1055,16 +1394,17 @@ for (int i = 0; i < 2; i++) {
 
 CSoundData::CSoundData ()
 {
-for (int i = 0; i < 2; i++)
+for (int32_t i = 0; i < 2; i++)
 	sounds [i].Create (MAX_SOUND_FILES); //[MAX_SOUND_FILES];
-sounds [0].ShareBuffer (soundP);
+sounds [0].ShareBuffer (pSound);
+nType = 0;
 }
 
 // ----------------------------------------------------------------------------
 
 CTextureData::CTextureData ()
 {
-for (int i = 0; i < 2; i++) {
+for (int32_t i = 0; i < 2; i++) {
 	bitmapFiles [i].Create (MAX_BITMAP_FILES);
 	bitmapFlags [i].Create (MAX_BITMAP_FILES);
 	bitmaps [i].Create (MAX_BITMAP_FILES);
@@ -1082,18 +1422,18 @@ defaultObjBmIndex.Create (MAX_OBJ_BITMAPS);
 addonBitmaps.Create (MAX_ADDON_BITMAP_FILES);
 bitmapXlat.Create (MAX_BITMAP_FILES);
 aliases.Create (MAX_ALIASES);
-objBmIndexP.Create (MAX_OBJ_BITMAPS);
+pObjBmIndex.Create (MAX_OBJ_BITMAPS);
 cockpitBmIndex.Create (N_COCKPIT_BITMAPS);
 bitmapColors.Create (MAX_BITMAP_FILES);
 brightness.Create (MAX_WALL_TEXTURES);
 brightness.Clear ();
 
-bitmaps [0].ShareBuffer (bitmapP);
-altBitmaps [0].ShareBuffer (altBitmapP);
-bmIndex [0].ShareBuffer (bmIndexP);
-bitmapFiles [0].ShareBuffer (bitmapFileP);
-tMapInfo [0].ShareBuffer (tMapInfoP);
-gameData.pig.tex.nFirstMultiBitmap = -1;
+bitmaps [0].ShareBuffer (pBitmap);
+altBitmaps [0].ShareBuffer (pAltBitmap);
+bmIndex [0].ShareBuffer (pBmIndex);
+bitmapFiles [0].ShareBuffer (pBitmapFile);
+tMapInfo [0].ShareBuffer (pTexMapInfo);
+gameData.pigData.tex.nFirstMultiBitmap = -1;
 nObjBitmaps = 0;
 bPageFlushed = 0;
 nExtraBitmaps = 0;
@@ -1123,13 +1463,14 @@ nProducers = 0;
 nRobotMakers = 0;
 nEquipmentMakers = 0;
 nRepairCenters = 0;
+playerSegP = NULL;
 }
 
 //------------------------------------------------------------------------------
 
 CRobotData::CRobotData ()
 {
-for (int i = 0; i < 2; i++) {
+for (int32_t i = 0; i < 2; i++) {
 	info [i].Create (MAX_ROBOT_TYPES);
 	info [i].Clear (0xff);
 	}
@@ -1153,8 +1494,13 @@ CLEAR (nTypes);
 
 CReactorData::CReactorData ()
 {
-for (int i = 0; i < MAX_BOSS_COUNT; i++)
+for (int32_t i = 0; i < MAX_BOSS_COUNT; i++)
 	states [i].nDeadObj = -1;
+nReactors = 0;
+bDestroyed = 0;
+bDisabled = 0;
+bPresent = 0;
+nStrength = 0;
 }
 
 // ----------------------------------------------------------------------------
@@ -1177,7 +1523,7 @@ CThiefData::CThiefData ()
 {
 nStolenItem = 0;
 xReInitTime = 0x3f000000;
-for (int i = 0; i < NDL; i++)
+for (int32_t i = 0; i < DIFFICULTY_LEVEL_COUNT; i++)
 	xWaitTimes [i] = I2X (30 - i * 5);
 }
 
@@ -1204,12 +1550,12 @@ strcpy (szShipModels [2], "pyrogl.ase");
 
 bool CModelData::Create (void)
 {
-	int i;
+	int32_t i;
 
 for (i = 0; i < 2; i++) {
 	aseModels [i].Create (MAX_POLYGON_MODELS);
 	oofModels [i].Create (MAX_POLYGON_MODELS);
-	for (int j = 0; j < 2; j++)
+	for (int32_t j = 0; j < 2; j++)
 		pofData [i][j].Create (MAX_POLYGON_MODELS);
 	CREATE (modelToOOF [i], MAX_POLYGON_MODELS, 0);
 	CREATE (modelToASE [i], MAX_POLYGON_MODELS, 0);
@@ -1218,7 +1564,7 @@ for (i = 0; i < 2; i++) {
 CREATE (bHaveHiresModel, MAX_POLYGON_MODELS, 0);
 for (i = 0; i < 3; i++) {
 	polyModels [i].Create (MAX_POLYGON_MODELS);
-	for (int j = 0; j < MAX_POLYGON_MODELS; j++)
+	for (int32_t j = 0; j < MAX_POLYGON_MODELS; j++)
 		polyModels [i][j].SetKey (j);
 	}
 CREATE (modelToPOL, MAX_POLYGON_MODELS, 0);
@@ -1240,18 +1586,18 @@ return true;
 
 void CModelData::Destroy (void)
 {
-	int	h, i;
+	int32_t	h, i;
 
 PrintLog (1, "unloading polygon model data\n");
 for (h = 0; h < 2; h++) {
 	for (i = 0; i < MAX_POLYGON_MODELS; i++) {
 #if DBG
 		if ((nDbgModel >= 0) && (i == nDbgModel))
-			nDbgModel = nDbgModel;
+			BRP;
 #endif
 		renderModels [h][i].Destroy ();
-		gameData.models.pofData [h][0][i].Destroy ();
-		gameData.models.pofData [h][1][i].Destroy ();
+		gameData.modelData.pofData [h][0][i].Destroy ();
+		gameData.modelData.pofData [h][1][i].Destroy ();
 		}
 	}
 PrintLog (-1);
@@ -1261,14 +1607,14 @@ PrintLog (-1);
 
 CMorphData::CMorphData ()
 {
-gameData.render.morph.xRate = MORPH_RATE;
+gameData.renderData.morph.xRate = MORPH_RATE;
 }
 
 // ----------------------------------------------------------------------------
 
 CCockpitData::CCockpitData ()
 {
-for (int i = 0; i < 2; i++)
+for (int32_t i = 0; i < 2; i++)
 	if (gauges [i].Create (MAX_GAUGE_BMS))
 		gauges [i].Clear (0xff);
 }
@@ -1283,14 +1629,36 @@ void InitWeaponFlags (void)
 
 void InitIdToOOF (void)
 {
-gameData.objs.idToOOF.Clear (0);
-gameData.objs.idToOOF [MEGAMSL_ID] = OOF_MEGA;
+gameData.objData.idToOOF.Clear (0);
+gameData.objData.idToOOF [MEGAMSL_ID] = OOF_MEGA;
 }
 
 // ----------------------------------------------------------------------------
 
 CObjectData::CObjectData ()
 {
+pConsole = NULL;
+pViewer = NULL;
+deadPlayerCamera = NULL;
+endLevelCamera = NULL;
+pMissileViewer = NULL;
+nChildFreeList = 0;
+nDeadControlCenter = -1;
+nDebris = 0;
+nFirstDropped = 0;
+nLastDropped = 0;
+nFreeDropped = 0;
+nDropped = 0;
+nDrops = 0;
+nEffects = 0;
+nFrameCount = 0;
+nInitialRobots = 0;
+nObjects = 0;
+nMaxObjects = 0;
+nMaxUsedObjects = 0;
+nObjectLimit = 0;
+nNextSignature = 0;
+nVertigoBotFlags = 0;
 InitWeaponFlags ();
 CollideInit ();
 InitIdToOOF ();
@@ -1305,9 +1673,9 @@ CLEAR (nLastObject);
 CLEAR (guidedMissile);
 CLEAR (trackGoals);
 bWantEffect.Clear ();
-consoleP = NULL;
-viewerP = NULL;
-missileViewerP = NULL;
+pConsole = NULL;
+pViewer = NULL;
+pMissileViewer = NULL;
 deadPlayerCamera = NULL;
 endLevelCamera = NULL;
 nFirstDropped = 0;
@@ -1323,7 +1691,7 @@ nDeadControlCenter = 0;
 nVertigoBotFlags = 0;
 nFrameCount = 0;
 nEffects = 0;
-nMaxObjects = max (gameFileInfo.objects.count + 1000, gameFileInfo.objects.count * 2);
+nMaxObjects = Max (gameFileInfo.objects.count + 1000, gameFileInfo.objects.count * 2);
 nMaxUsedObjects = LEVEL_OBJECTS - 20;
 }
 
@@ -1331,9 +1699,10 @@ nMaxUsedObjects = LEVEL_OBJECTS - 20;
 
 void CObjectData::InitFreeList (void)
 {
-for (int i = 0; i < LEVEL_OBJECTS; i++) {
-	gameData.objs.freeList [i] = i;
-	OBJECTS [i].Init ();
+for (int32_t i = 0; i < LEVEL_OBJECTS; i++) {
+	gameData.objData.freeList [i] = i;
+	gameData.objData.freeListIndex.Clear (0xff);
+	gameData.objData.objects [i].Init ();
 	}
 }
 
@@ -1342,48 +1711,50 @@ for (int i = 0; i < LEVEL_OBJECTS; i++) {
 bool CObjectData::Create (void)
 {
 Init ();
-CREATE (gameData.objs.objects, LEVEL_OBJECTS, 0);
-CREATE (gameData.objs.update, LEVEL_OBJECTS, 0);
-CREATE (gameData.objs.freeList, LEVEL_OBJECTS, 0);
-CREATE (gameData.objs.parentObjs, LEVEL_OBJECTS, (char) 0xff);
-CREATE (gameData.objs.childObjs, LEVEL_OBJECTS, 0);
-CREATE (gameData.objs.firstChild, LEVEL_OBJECTS, (char) 0xff);
-CREATE (gameData.objs.init, LEVEL_OBJECTS, 0);
-CREATE (gameData.objs.dropInfo, LEVEL_OBJECTS, 0);
-CREATE (gameData.objs.speedBoost, LEVEL_OBJECTS, 0);
-CREATE (gameData.objs.vRobotGoals, LEVEL_OBJECTS, 0);
-CREATE (gameData.objs.xLastAfterburnerTime, LEVEL_OBJECTS, 0);
-CREATE (gameData.objs.xLight, LEVEL_OBJECTS, 0);
-CREATE (gameData.objs.nLightSig, LEVEL_OBJECTS, 0);
-CREATE (gameData.objs.nHitObjects, LEVEL_OBJECTS * MAX_HIT_OBJECTS, 0);
-CREATE (gameData.objs.viewData, LEVEL_OBJECTS, (char) 0xFF);
-CREATE (gameData.objs.bWantEffect, LEVEL_OBJECTS, (char) 0);
+CREATE (gameData.objData.objects, LEVEL_OBJECTS, 0);
+CREATE (gameData.objData.update, LEVEL_OBJECTS, 0);
+CREATE (gameData.objData.freeList, LEVEL_OBJECTS, 0);
+CREATE (gameData.objData.freeListIndex, LEVEL_OBJECTS, 0xff);
+CREATE (gameData.objData.parentObjs, LEVEL_OBJECTS, (char) 0xff);
+CREATE (gameData.objData.childObjs, LEVEL_OBJECTS, 0);
+CREATE (gameData.objData.firstChild, LEVEL_OBJECTS, (char) 0xff);
+CREATE (gameData.objData.init, LEVEL_OBJECTS, 0);
+CREATE (gameData.objData.dropInfo, LEVEL_OBJECTS, 0);
+CREATE (gameData.objData.speedBoost, LEVEL_OBJECTS, 0);
+CREATE (gameData.objData.vRobotGoals, LEVEL_OBJECTS, 0);
+CREATE (gameData.objData.xLastAfterburnerTime, LEVEL_OBJECTS, 0);
+CREATE (gameData.objData.xLight, LEVEL_OBJECTS, 0);
+CREATE (gameData.objData.nLightSig, LEVEL_OBJECTS, 0);
+CREATE (gameData.objData.nHitObjects, LEVEL_OBJECTS * MAX_HIT_OBJECTS, 0);
+CREATE (gameData.objData.viewData, LEVEL_OBJECTS, (char) 0xFF);
+CREATE (gameData.objData.bWantEffect, LEVEL_OBJECTS, (char) 0);
 InitFreeList ();
-memset (&gameData.objs.lists, 0, sizeof (gameData.objs.lists));
-return gameData.render.mine.Create (0) && lightClusterManager.Init () && shrapnelManager.Init ();
+memset (&gameData.objData.lists, 0, sizeof (gameData.objData.lists));
+return gameData.renderData.mine.Create (0) && lightClusterManager.Init () && shrapnelManager.Init ();
 }
 
 // ----------------------------------------------------------------------------
 
 void CObjectData::Destroy (void)
 {
-DESTROY (gameData.objs.objects);
-DESTROY (gameData.objs.effects);
-DESTROY (gameData.objs.freeList);
-DESTROY (gameData.objs.parentObjs);
-DESTROY (gameData.objs.childObjs);
-DESTROY (gameData.objs.firstChild);
-DESTROY (gameData.objs.init);
-DESTROY (gameData.objs.dropInfo);
-DESTROY (gameData.objs.speedBoost);
-DESTROY (gameData.objs.vRobotGoals);
-DESTROY (gameData.objs.xLastAfterburnerTime);
-DESTROY (gameData.objs.xLight);
-DESTROY (gameData.objs.nLightSig);
-DESTROY (gameData.objs.nHitObjects);
-DESTROY (gameData.objs.viewData);
-DESTROY (gameData.objs.bWantEffect);
-memset (&gameData.objs.lists, 0, sizeof (gameData.objs.lists));
+DESTROY (gameData.objData.objects);
+DESTROY (gameData.objData.effects);
+DESTROY (gameData.objData.freeListIndex);
+DESTROY (gameData.objData.freeList);
+DESTROY (gameData.objData.parentObjs);
+DESTROY (gameData.objData.childObjs);
+DESTROY (gameData.objData.firstChild);
+DESTROY (gameData.objData.init);
+DESTROY (gameData.objData.dropInfo);
+DESTROY (gameData.objData.speedBoost);
+DESTROY (gameData.objData.vRobotGoals);
+DESTROY (gameData.objData.xLastAfterburnerTime);
+DESTROY (gameData.objData.xLight);
+DESTROY (gameData.objData.nLightSig);
+DESTROY (gameData.objData.nHitObjects);
+DESTROY (gameData.objData.viewData);
+DESTROY (gameData.objData.bWantEffect);
+memset (&gameData.objData.lists, 0, sizeof (gameData.objData.lists));
 nObjects = 0;
 lightManager.Reset ();
 shrapnelManager.Reset ();
@@ -1394,10 +1765,10 @@ shrapnelManager.Reset ();
 void CObjectData::GatherEffects (void)
 {
 if (nEffects && effects.Create (nEffects)) {
-	int i, j;
+	int32_t i, j;
 	for (i = j = 0; i < gameFileInfo.objects.count; i++) {
-		if (OBJECTS [i].info.nType == OBJ_EFFECT) {
-			effects [j] = OBJECTS [i];
+		if (OBJECT (i)->info.nType == OBJ_EFFECT) {
+			effects [j] = *OBJECT (i);
 			effects [j].info.nPrevInSeg = effects [j].info.nNextInSeg = -1;
 			j++;
 			}
@@ -1410,23 +1781,23 @@ else
 
 //------------------------------------------------------------------------------
 
-int CObjectData::RebuildEffects (void)
+int32_t CObjectData::RebuildEffects (void)
 {
-	int j = 0;
+	int32_t j = 0;
 
 if (nEffects && effects.Buffer ()) {
-	for (int i = 0; i < nEffects; i++) {
+	for (int32_t i = 0; i < nEffects; i++) {
 		tBaseObject& bo = effects [i];
-		int nObject = CreateObject (bo.info.nType, bo.info.nId, -1,
+		int32_t nObject = CreateObject (bo.info.nType, bo.info.nId, -1,
 											 -bo.info.nSegment - 2, bo.info.position.vPos, bo.info.position.mOrient,
 											 bo.info.xSize, bo.info.controlType, bo.info.movementType, bo.info.renderType);
 		if (nObject >= 0) {
-			OBJECTS [nObject].info = bo.info;
-			OBJECTS [nObject].mType = bo.mType;
-			OBJECTS [nObject].cType = bo.cType;
-			OBJECTS [nObject].rType = bo.rType;
-			if (OBJECTS [nObject].info.nId == SMOKE_ID)
-				OBJECTS [nObject].SetupSmoke ();
+			OBJECT (nObject)->info = bo.info;
+			OBJECT (nObject)->mType = bo.mType;
+			OBJECT (nObject)->cType = bo.cType;
+			OBJECT (nObject)->rType = bo.rType;
+			if (OBJECT (nObject)->info.nId == PARTICLE_ID)
+				OBJECT (nObject)->SetupSmoke ();
 			j++;
 			}
 		}
@@ -1436,13 +1807,43 @@ return j;
 
 // ----------------------------------------------------------------------------
 
+void CObjectData::SetGuidedMissile (uint8_t nPlayer, CObject* pObj) 
+{
+guidedMissile [nPlayer].pObj = pObj;
+guidedMissile [nPlayer].nSignature = pObj ? pObj->Signature () : -1;
+}
+
+// ----------------------------------------------------------------------------
+
+bool CObjectData::IsGuidedMissile (CObject* pObj) 
+{
+return pObj && pObj->IsGuidedMissile ();
+}
+
+// ----------------------------------------------------------------------------
+
+bool CObjectData::HasGuidedMissile (uint8_t nPlayer) 
+{
+return IsGuidedMissile (guidedMissile [nPlayer].pObj);
+}
+
+// ----------------------------------------------------------------------------
+
+CObject* CObjectData::GetGuidedMissile (uint8_t nPlayer) 
+{
+return IsGuidedMissile (guidedMissile [nPlayer].pObj) ? guidedMissile [nPlayer].pObj : NULL;
+}
+
+// ----------------------------------------------------------------------------
+
 CColorData::CColorData ()
 {
 if (textures.Create (MAX_WALL_TEXTURES))
 	textures.Clear ();
-for (int i = 0; i < 2; i++)
+for (int32_t i = 0; i < 2; i++)
 	if (defaultTextures [i].Create (MAX_WALL_TEXTURES))
 		defaultTextures [i].Clear ();
+nVisibleLights = 0;
 }
 
 // ----------------------------------------------------------------------------
@@ -1507,6 +1908,10 @@ playerThrust.SetZero ();
 segments.Clear (0xff);
 nSegments = 0;
 bIgnoreObjFlag = 0;
+nHomingWeaponFPS [0] = 25;
+nHomingWeaponFPS [1] = 33;
+nHomingWeaponFPS [2] = 40;
+nHomingWeaponFPS [3] = 60;
 }
 
 // ----------------------------------------------------------------------------
@@ -1530,6 +1935,7 @@ nPrimary = 0;
 nSecondary = 0;
 nOverridden = 0;
 bTripleFusion = 0;
+gameData.weaponData.xMinTrackableDot = MIN_TRACKABLE_DOT;
 CLEAR (firing);
 CLEAR (nTypes);
 }
@@ -1539,7 +1945,7 @@ CLEAR (nTypes);
 bool CWeaponData::Create (void)
 {
 CREATE (color, LEVEL_OBJECTS, 0);
-for (int i = 0; i < LEVEL_OBJECTS; i++)
+for (int32_t i = 0; i < LEVEL_OBJECTS; i++)
 	color [i].Set (1.0f, 1.0f, 1.0f, 1.0f);
 return true;
 }
@@ -1613,7 +2019,8 @@ nTypingTimeout = 0;
 
 bool CMultiGameData::Create (void)
 {
-CREATE (gameData.multigame.remoteToLocal, MAX_NUM_NET_PLAYERS * LEVEL_OBJECTS, 0xff);  // Remote CObject number for each local CObject
+for (int32_t i = 0; i < MAX_NUM_NET_PLAYERS; i++)
+	CREATE (gameData.multigame.remoteToLocal [i], LEVEL_OBJECTS, 0xff);  // Remote CObject number for each local CObject
 CREATE (gameData.multigame.localToRemote, LEVEL_OBJECTS, 0xff);
 CREATE (gameData.multigame.nObjOwner, LEVEL_OBJECTS, 0xff);   // Who created each CObject in my universe, -1 = loaded at start
 return true;
@@ -1623,7 +2030,8 @@ return true;
 
 void CMultiGameData::Destroy (void)
 {
-DESTROY (gameData.multigame.remoteToLocal);  // Remote CObject number for each local CObject
+for (int32_t i = 0; i < MAX_NUM_NET_PLAYERS; i++)
+	DESTROY (gameData.multigame.remoteToLocal [i]);  // Remote CObject number for each local CObject
 DESTROY (gameData.multigame.localToRemote);
 DESTROY (gameData.multigame.nObjOwner);   // Who created each CObject in my universe, -1 = loaded at start
 }
@@ -1632,22 +2040,29 @@ DESTROY (gameData.multigame.nObjOwner);   // Who created each CObject in my univ
 
 CAIData::CAIData ()
 {
-gameData.ai.bInitialized = 0;
-gameData.ai.bEvaded = 0;
-gameData.ai.bEnableAnimation = 1;
-gameData.ai.bInfoEnabled = 0;
-gameData.ai.nAwarenessEvents = 0;
-gameData.ai.target.nDistToLastPosFiredAt = 0;
+gameData.aiData.bInitialized = 0;
+gameData.aiData.bEvaded = 0;
+gameData.aiData.bEnableAnimation = 1;
+gameData.aiData.bInfoEnabled = 0;
+gameData.aiData.nAwarenessEvents = 0;
+gameData.aiData.target.nDistToLastPosFiredAt = 0;
 cloakInfo.Create (MAX_AI_CLOAK_INFO);
 awarenessEvents.Create (MAX_AWARENESS_EVENTS);
-gameData.ai.freePointSegs = gameData.ai.routeSegs.Buffer ();
+gameData.aiData.freePointSegs = gameData.aiData.routeSegs.Buffer ();
+nHitSeg = -1;
+nHitType = -1;
+bObjAnimates = 0;
+nLastMissileCamera = -1;
+nMaxAwareness = 0;
+nOverallAgitation = 0;
+nTargetVisibility = 0;
 }
 
 // ----------------------------------------------------------------------------
 
 bool CAIData::Create (void)
 {
-CREATE (gameData.ai.localInfo, LEVEL_OBJECTS, 0);
+CREATE (gameData.aiData.localInfo, LEVEL_OBJECTS, 0);
 CREATE (routeSegs, LEVEL_POINT_SEGS, 0);
 return true;
 }
@@ -1656,7 +2071,7 @@ return true;
 
 void CAIData::Destroy (void)
 {
-DESTROY (gameData.ai.localInfo);
+DESTROY (gameData.aiData.localInfo);
 DESTROY (routeSegs);
 }
 
@@ -1664,8 +2079,8 @@ DESTROY (routeSegs);
 
 bool CDemoData::Create (void)
 {
-CREATE (gameData.demo.bWasRecorded,  LEVEL_OBJECTS, 0);
-CREATE (gameData.demo.bViewWasRecorded, LEVEL_OBJECTS, 0);
+CREATE (gameData.demoData.bWasRecorded,  LEVEL_OBJECTS, 0);
+CREATE (gameData.demoData.bViewWasRecorded, LEVEL_OBJECTS, 0);
 return true;
 }
 
@@ -1673,8 +2088,8 @@ return true;
 
 void CDemoData::Destroy (void)
 {
-DESTROY (gameData.demo.bWasRecorded);
-DESTROY (gameData.demo.bViewWasRecorded);
+DESTROY (gameData.demoData.bWasRecorded);
+DESTROY (gameData.demoData.bViewWasRecorded);
 }
 
 // ----------------------------------------------------------------------------
@@ -1707,8 +2122,8 @@ nChampion = -1;
 CTimeData::CTimeData ()
 {
 memset (this, 0, sizeof (*this));
-gameData.time.xMaxOnline = 180000;
-gameData.time.xGameStart = -gameData.time.xMaxOnline;
+gameData.timeData.xMaxOnline = 180000;
+gameData.timeData.xGameStart = -gameData.timeData.xMaxOnline;
 xFrame = 0x1000;
 xLastThiefHitTime = 0;
 }
@@ -1721,7 +2136,7 @@ bOutline = 0;
 nGridW = nGridH = 0;
 orgI = orgJ = 0;
 nMineTilesDrawn = 0;
-bmP = NULL;
+pBm = NULL;
 CLEAR (uvlList);
 uvlList [0][1].u =
 uvlList [0][2].v =
@@ -1769,61 +2184,62 @@ return gameData.multiplayer.weaponStates [(nId < 0) ? N_LOCALPLAYER : nId].xFusi
 fix CGameData::FusionDamage (fix xBaseDamage)
 {
 return 
-	(gameStates.app.bHaveExtraGameInfo [IsMultiGame] && !COMPETITION)
+	(gameStates.app.bHaveExtraGameInfo [IsMultiGame] && !COMPETITION && !EGI_FLAG (bUnnerfD1Weapons, 0, 0, 0))
 	? fix (float (xBaseDamage) * float (extraGameInfo [IsMultiGame].nFusionRamp) / 2)
 	: xBaseDamage;
 }
 
 // ----------------------------------------------------------------------------
 
-bool CGameData::Create (int nSegments, int nVertices)
+bool CGameData::Create (int32_t nSegments, int32_t nVertices)
 {
-if (!(gameData.segs.Create (nSegments, nVertices) &&
-		gameData.objs.Create () &&
-		gameData.render.color.Create () &&
-		gameData.render.lights.Create () &&
-		gameData.render.shadows.Create () &&
-		//gameData.render.Create () &&
-		gameData.weapons.Create () &&
-		gameData.physics.Create () &&
-		gameData.ai.Create () &&
+ENTER (0, 0);
+if (!(gameData.segData.Create (nSegments, nVertices) &&
+		gameData.objData.Create () &&
+		gameData.renderData.color.Create () &&
+		gameData.renderData.lights.Create () &&
+		gameData.renderData.shadows.Create () &&
+		gameData.weaponData.Create () &&
+		gameData.physicsData.Create () &&
+		gameData.aiData.Create () &&
 		gameData.multiplayer.Create () &&
 		gameData.multigame.Create () &&
-		gameData.demo.Create ()))
-	return false;
+		gameData.demoData.Create ()))
+	RETVAL (false)
 particleManager.Init ();
 particleManager.SetLastType (-1);
 lightningManager.Init ();
 markerManager.Init ();
-gameData.physics.Init ();
-gameData.bosses.Create ();
-gameData.walls.Reset ();
-return true;
+gameData.physicsData.Init ();
+gameData.bossData.Create ();
+gameData.wallData.Reset ();
+RETVAL (true)
 }
 
 // ----------------------------------------------------------------------------
 
 void CGameData::Destroy (void)
 {
-gameData.segs.Destroy ();
-gameData.objs.Destroy ();
-gameData.walls.Destroy ();
-gameData.trigs.Destroy ();
-gameData.render.color.Destroy ();
-gameData.render.lights.Destroy ();
-gameData.render.shadows.Destroy ();
-gameData.render.Destroy ();
-gameData.weapons.Destroy ();
-gameData.physics.Destroy ();
-gameData.ai.Destroy ();
+ENTER (0, 0);
+gameData.segData.Destroy ();
+gameData.objData.Destroy ();
+gameData.wallData.Destroy ();
+gameData.trigData.Destroy ();
+gameData.renderData.color.Destroy ();
+gameData.renderData.lights.Destroy ();
+gameData.renderData.shadows.Destroy ();
+gameData.renderData.Destroy ();
+gameData.weaponData.Destroy ();
+gameData.physicsData.Destroy ();
+gameData.aiData.Destroy ();
 gameData.multiplayer.Destroy ();
 gameData.multigame.Destroy ();
-gameData.demo.Destroy ();
-gameData.bosses.Destroy ();
+gameData.demoData.Destroy ();
+gameData.bossData.Destroy ();
 particleManager.Shutdown ();
 lightningManager.Shutdown (1);
 cameraManager.Destroy ();
-
+RETURN
 }
 
 // ----------------------------------------------------------------------------
@@ -1837,19 +2253,20 @@ PrintLog (-1);
 
 //------------------------------------------------------------------------------
 
-void SetDataVersion (int v)
+void SetDataVersion (int32_t v)
 {
 gameStates.app.bD1Data = (v < 0) ? gameStates.app.bD1Mission && gameStates.app.bHaveD1Data : v;
-gameData.pig.tex.bitmaps [gameStates.app.bD1Data].ShareBuffer (gameData.pig.tex.bitmapP);
-gameData.pig.tex.altBitmaps [gameStates.app.bD1Data].ShareBuffer (gameData.pig.tex.altBitmapP);
-gameData.pig.tex.bmIndex [gameStates.app.bD1Data].ShareBuffer (gameData.pig.tex.bmIndexP);
-gameData.pig.tex.bitmapFiles [gameStates.app.bD1Data].ShareBuffer (gameData.pig.tex.bitmapFileP);
-gameData.pig.tex.tMapInfo [gameStates.app.bD1Data].ShareBuffer (gameData.pig.tex.tMapInfoP);
-gameData.pig.sound.sounds [gameStates.app.bD1Data].ShareBuffer (gameData.pig.sound.soundP);
-gameData.effects.effects [gameStates.app.bD1Data].ShareBuffer (gameData.effects.effectP);
-gameData.effects.vClips [gameStates.app.bD1Data].ShareBuffer (gameData.effects.vClipP);
-gameData.walls.anims [gameStates.app.bD1Data].ShareBuffer (gameData.walls.animP);
-gameData.bots.info [gameStates.app.bD1Data].ShareBuffer (gameData.bots.infoP);
+PrintLog (0, "Setting data version %d (D%d) (D1 mission = %d, have D1 data = %d)\n", v, 2 - gameStates.app.bD1Data, gameStates.app.bD1Mission, gameStates.app.bHaveD1Data);
+gameData.pigData.tex.bitmaps [gameStates.app.bD1Data].ShareBuffer (gameData.pigData.tex.pBitmap);
+gameData.pigData.tex.altBitmaps [gameStates.app.bD1Data].ShareBuffer (gameData.pigData.tex.pAltBitmap);
+gameData.pigData.tex.bmIndex [gameStates.app.bD1Data].ShareBuffer (gameData.pigData.tex.pBmIndex);
+gameData.pigData.tex.bitmapFiles [gameStates.app.bD1Data].ShareBuffer (gameData.pigData.tex.pBitmapFile);
+gameData.pigData.tex.tMapInfo [gameStates.app.bD1Data].ShareBuffer (gameData.pigData.tex.pTexMapInfo);
+gameData.pigData.sound.sounds [gameStates.app.bD1Data].ShareBuffer (gameData.pigData.sound.pSound);
+gameData.effectData.effects [gameStates.app.bD1Data].ShareBuffer (gameData.effectData.pEffect);
+gameData.effectData.animations [gameStates.app.bD1Data].ShareBuffer (gameData.effectData.vClipP);
+gameData.wallData.anims [gameStates.app.bD1Data].ShareBuffer (gameData.wallData.pAnim);
+gameData.botData.info [gameStates.app.bD1Data].ShareBuffer (gameData.botData.pInfo);
 }
 
 // ----------------------------------------------------------------------------
@@ -1925,17 +2342,17 @@ gameOptions [0].render.coronas.nObjIntensity = 1;
 
 // ----------------------------------------------------------------------------
 
-void DefaultSmokeSettings (void)
+void DefaultSmokeSettings (bool bSetup)
 {
 gameOptions [0].render.particles.bWiggleBubbles = 1;
 gameOptions [0].render.particles.bWobbleBubbles = 1;
-if (!gameOpts->app.bExpertMode) {
+if (bSetup || !gameOpts->app.bExpertMode) {
 	gameOptions [0].render.particles.bPlayers = (gameOpts->render.particles.nQuality > 1);
 	gameOptions [0].render.particles.bRobots = 1;
 	gameOptions [0].render.particles.bMissiles = 1;
 	gameOptions [0].render.particles.bDebris = 1;
 	gameOptions [0].render.particles.bCollisions = 0;
-	gameOptions [0].render.particles.bDisperse = 1;
+	gameOptions [0].render.particles.bDisperse = 0;
 	gameOptions [0].render.particles.bRotate = 1;
 	gameOptions [0].render.particles.bDecreaseLag = (gameOptions [0].render.nQuality < 2);
 	gameOptions [0].render.particles.bAuxViews = (gameOptions [0].render.nQuality > 2);
@@ -1998,13 +2415,19 @@ gameOptions [0].render.cameras.nFPS = 0;
 
 // ----------------------------------------------------------------------------
 
-void DefaultLightSettings (void)
+void DefaultLightSettings (bool bSetup)
 {
-	static int nMaxLightsPerObject [] = {8, 8, 16, 24};
+	static int32_t nMaxLightsPerObject [] = {8, 8, 16, 24};
 
 //gameOptions [0].render.color.nLevel = 2;
 gameOptions [0].render.color.bMix = 1;
 gameOptions [0].render.color.nSaturation = 1;
+if (bSetup || !gameOpts->app.bExpertMode) {
+	gameOptions [0].render.color.nAmbientLight = DEFAULT_AMBIENT_LIGHT;
+	gameOptions [0].render.color.nSpecularLight = DEFAULT_SPECULAR_LIGHT;
+	}
+gameData.SetAmbientLight (gameOpts->render.color.nAmbientLight);
+gameData.SetSpecularLight (gameOpts->render.color.nSpecularLight);
 extraGameInfo [0].bPowerupLights = 0;
 extraGameInfo [0].bBrightObjects = 0;
 gameOptions [0].ogl.nMaxLightsPerObject = nMaxLightsPerObject [gameOptions [0].render.nQuality];
@@ -2033,23 +2456,25 @@ gameOptions [0].render.automap.bSkybox = 0;
 
 // ----------------------------------------------------------------------------
 
-void DefaultEffectSettings (void)
+void DefaultEffectSettings (bool bSetup)
 {
 gameOptions [0].render.effects.bAutoTransparency = 1;
 gameOptions [0].render.effects.bTransparent = 1;
 //gameOptions [0].render.effects.nShockwaves = 1;
-gameOptions [0].render.effects.bEnergySparks = (gameOptions [0].render.nQuality > 0);
 gameOptions [0].render.effects.bMovingSparks = 1;
+#if 0
 if (gameOptions [0].render.nQuality < 2)
 	gameOptions [0].render.effects.bGlow = 0;
-extraGameInfo [0].bPlayerShield = 1;
-gameOptions [0].render.effects.bRobotShields = 1;
+#endif
+extraGameInfo [0].nShieldEffect = gameOpts->render.effects.bShields;
 gameOptions [0].render.effects.bOnlyShieldHits = 1;
 extraGameInfo [0].bTracers = 1;
 extraGameInfo [0].bShockwaves = 0; 
 extraGameInfo [0].bDamageExplosions = 0;
-if (!gameOpts->app.bExpertMode)
+if (bSetup || !gameOpts->app.bExpertMode) {
+	gameOptions [0].render.effects.bEnergySparks = (gameOptions [0].render.nQuality > 1);
 	gameOptions [0].render.effects.bSoftParticles = (gameOptions [0].render.nQuality == 3) ? 7 : 0;
+	}
 else if (gameOptions [0].render.nQuality < 3)
 	gameOptions [0].render.effects.bSoftParticles = 0;
 #if 1
@@ -2063,7 +2488,7 @@ DefaultLightningSettings ();
 
 // ----------------------------------------------------------------------------
 
-void DefaultRenderSettings (void)
+void DefaultRenderSettings (bool bSetup)
 {
 extraGameInfo [0].grWallTransparency = (5 * FADE_LEVELS + 5) / 10;
 gameOptions [0].render.color.bWalls = 1;
@@ -2072,11 +2497,13 @@ gameOptions [0].render.textures.nQuality = gameOptions [0].render.nQuality;
 
 gameOptions [0].render.weaponIcons.bEquipment = 1;
 gameOptions [0].render.weaponIcons.bSmall = 1;
-gameOptions [0].render.weaponIcons.nSort = 1;
 gameOptions [0].render.weaponIcons.bShowAmmo = 1;
 gameOptions [0].render.weaponIcons.alpha = 4;
 
-if (!gameOpts->app.bExpertMode) {
+if (!SetSideBySideDisplayMode ())
+	gameOpts->render.stereo.nGlasses = 0;
+if (bSetup || !gameOpts->app.bExpertMode) {
+	gameOptions [0].render.weaponIcons.nSort = 1;
 	gameOpts->render.nLightmapPrecision = 1;
 	if (gameOpts->render.stereo.nGlasses) {
 		gameOpts->render.stereo.nMethod = 1;
@@ -2085,31 +2512,32 @@ if (!gameOpts->app.bExpertMode) {
 		gameOpts->render.stereo.bDeghost = 1;
 		gameOpts->render.stereo.bEnhance = (gameOpts->render.bUseShaders && ogl.m_features.bShaders);
 		gameOpts->render.stereo.bFlipFrames = 0;
+		gameOpts->render.stereo.nRiftFOV = RIFT_DEFAULT_FOV;
 		}
 	}
 
 DefaultPowerupSettings ();
 DefaultShipSettings ();
 DefaultMovieSettings ();
-DefaultEffectSettings ();
-DefaultLightSettings ();
+DefaultEffectSettings (bSetup);
+DefaultLightSettings (bSetup);
 DefaultCameraSettings ();
 DefaultAutomapSettings ();
 }
 
 // ----------------------------------------------------------------------------
 
-void DefaultPhysicsSettings (void)
+void DefaultPhysicsSettings (bool bSetup)
 {
 extraGameInfo [0].nSpeedBoost = 10;
 extraGameInfo [0].bRobotsHitRobots = 1;
 extraGameInfo [0].bKillMissiles = 1;
 extraGameInfo [0].bFluidPhysics = 1;
 gameOpts->render.nDebrisLife = 0;
-if (gameOpts->app.bExpertMode != SUPERUSER) {
+if (bSetup || (gameOpts->app.bExpertMode != SUPERUSER)) {
 	extraGameInfo [0].bWiggle = 1;
 	extraGameInfo [0].nOmegaRamp = (IsMultiGame && !IsCoopGame) ? 1 : 3;
-	extraGameInfo [0].nMslTurnSpeed = 2;
+	extraGameInfo [0].nWeaponTurnSpeed = 0;
 	extraGameInfo [0].nMslStartSpeed = 0;
 	gameOpts->gameplay.nSlowMotionSpeedup = 6;
 	//extraGameInfo [0].nDrag = 10;
@@ -2118,7 +2546,7 @@ if (gameOpts->app.bExpertMode != SUPERUSER) {
 
 // ----------------------------------------------------------------------------
 
-void DefaultGameplaySettings (void)
+void DefaultGameplaySettings (bool bSetup)
 {
 extraGameInfo [0].headlight.bAvailable = 1;
 gameOptions [0].gameplay.bHeadlightOnWhenPickedUp = 0;
@@ -2138,6 +2566,10 @@ gameOptions [0].gameplay.bUseD1AI = 1;
 //if (!gameOpts->app.bExpertMode)
 //	extraGameInfo [0].nZoomMode = 1;
 gameData.multiplayer.weaponStates [N_LOCALPLAYER].nShip = gameOpts->gameplay.nShip [0];
+if (gameOpts->app.bExpertMode != SUPERUSER) {
+	extraGameInfo [0].nRechargeDelay = 4;
+	extraGameInfo [0].nRechargeSpeed = 1;
+	}
 MultiSendWeaponStates ();
 }
 
@@ -2149,7 +2581,7 @@ void DefaultSettings (void)
 
 // ----------------------------------------------------------------------------
 
-void DefaultMiscSettings (void)
+void DefaultMiscSettings (bool bSetup)
 {
 gameOptions [0].gameplay.bEscortHotKeys = 1;
 gameOptions [0].multi.bUseMacros = 1;
@@ -2161,7 +2593,7 @@ gameOptions [0].demo.bOldFormat = gameStates.app.bNostalgia != 0;
 
 // ----------------------------------------------------------------------------
 
-void DefaultCockpitSettings (void)
+void DefaultCockpitSettings (bool bSetup)
 {
 //gameOptions [0].render.cockpit.bReticle = 1;
 //gameOptions [0].render.cockpit.bMissileView = 1;
@@ -2183,35 +2615,226 @@ gameOptions [0].render.cockpit.bFlashGauges = 1;
 //gameOptions [0].render.cockpit.bObjectTally = 1;
 gameOptions [0].render.cockpit.bPlayerStats = 0;
 
+if (!gameOpts->app.bExpertMode) {
+	gameOpts->render.cockpit.nCompactWidth = 0;
+	gameOpts->render.cockpit.nCompactHeight = 0;
+	}
+
 extraGameInfo [0].nRadar = (gameOpts->render.cockpit.nRadarRange > 0);
 }
 
 // ----------------------------------------------------------------------------
 
-void DefaultKeyboardSettings (void)
+void DefaultKeyboardSettings (bool bSetup)
 {
 gameOptions [0].input.bUseHotKeys = 1;
 }
 
 // ----------------------------------------------------------------------------
 
-void DefaultApplicationSettings (void)
+void DefaultApplicationSettings (bool bSetup)
 {
 gameOptions [0].app.nVersionFilter = 3;
 }
 
 // ----------------------------------------------------------------------------
 
-void DefaultAllSettings (void)
+void DefaultAllSettings (bool bSetup)
 {
-DefaultApplicationSettings ();
-DefaultCockpitSettings ();
-DefaultGameplaySettings ();
-DefaultKeyboardSettings ();
-DefaultMiscSettings ();
-DefaultPhysicsSettings ();
-DefaultRenderSettings ();
+DefaultApplicationSettings (bSetup);
+DefaultCockpitSettings (bSetup);
+DefaultGameplaySettings (bSetup);
+DefaultKeyboardSettings (bSetup);
+DefaultMiscSettings (bSetup);
+DefaultPhysicsSettings (bSetup);
+DefaultRenderSettings (bSetup);
 //DefaultSettings ();
+}
+
+// ----------------------------------------------------------------------------
+
+#if DBG
+
+void* GameDataError (const char* szData, const char* szType, int32_t bPrintLog, const char* pszFile, int32_t nLine) 
+{
+if (bPrintLog) {
+	if (*pszFile)
+		PrintLog (0, "Invalid %s reference (%s) in file %s (%d)\n", szData, szType, pszFile, nLine);
+	else
+		PrintLog (0, "Invalid %s reference (%s)\n", szData, szType);
+	}
+return NULL;
+}
+
+CObject* CGameData::Object (int32_t nObject, int32_t nChecks, const char* pszFile, int32_t nLine) 
+{ 
+if (!objData.objects.Buffer ())
+	return (CObject*) GameDataError ("object", "buffer", nChecks & GAMEDATA_ERRLOG_BUFFER, pszFile, nLine);
+if (nObject < 0)
+	return (CObject*) GameDataError ("object", "underflow", nChecks & GAMEDATA_ERRLOG_UNDERFLOW, pszFile, nLine);
+if (nObject > objData.nLastObject [0])
+	return (CObject*) GameDataError ("object", "overflow", nChecks & GAMEDATA_ERRLOG_OVERFLOW, pszFile, nLine);
+if ((uint32_t) nObject >= objData.objects.Length ())
+	return (CObject*) GameDataError ("object", "overflow", nChecks & GAMEDATA_ERRLOG_BUFFER, pszFile, nLine);
+return objData.objects + nObject; 
+}
+
+
+CSegment* CGameData::Segment (int32_t nSegment, int32_t nChecks, const char* pszFile, int32_t nLine) 
+{ 
+if (!segData.segments.Buffer ())	
+	return (CSegment*) GameDataError ("segment", "buffer", nChecks & GAMEDATA_ERRLOG_BUFFER, pszFile, nLine);
+if (nSegment < 0)
+	return (CSegment*) GameDataError ("segment", "underflow", nChecks & GAMEDATA_ERRLOG_UNDERFLOW, pszFile, nLine);
+if (nSegment >= segData.nSegments)
+	return (CSegment*) GameDataError ("segment", "overflow", nChecks & GAMEDATA_ERRLOG_OVERFLOW, pszFile, nLine);
+if ((uint32_t) nSegment >= segData.segments.Length ())
+	return (CSegment*) GameDataError ("segment", "overflow", nChecks & GAMEDATA_ERRLOG_BUFFER, pszFile, nLine);
+return segData.segments + nSegment; 
+}
+
+
+CWall* CGameData::Wall (int32_t nWall, int32_t nChecks, const char* pszFile, int32_t nLine) 
+{ 
+if (!wallData.walls.Buffer ())
+	return (CWall*) GameDataError ("wall", "buffer", nChecks & GAMEDATA_ERRLOG_BUFFER, pszFile, nLine);
+if (nWall < 0)
+	return (CWall*) GameDataError ("wall", "underflow", nChecks & GAMEDATA_ERRLOG_UNDERFLOW, pszFile, nLine);
+if (nWall == NO_WALL)
+	return (CWall*) GameDataError ("wall", "null", nChecks & GAMEDATA_ERRLOG_UNDERFLOW, pszFile, nLine);
+if (nWall >= wallData.nWalls)
+	return (CWall*) GameDataError ("wall", "overflow", nChecks & GAMEDATA_ERRLOG_OVERFLOW, pszFile, nLine);
+if ((uint32_t) nWall >= wallData.walls.Length ())
+	return (CWall*) GameDataError ("wall", "overflow", nChecks & GAMEDATA_ERRLOG_BUFFER, pszFile, nLine);
+return wallData.walls + nWall; 
+}
+
+
+CTrigger* CGameData::Trigger (int32_t nType, int32_t nTrigger, int32_t nChecks, const char* pszFile, int32_t nLine) 
+{
+if (nTrigger == NO_TRIGGER)
+	return NULL;
+if (!trigData.triggers [nType].Buffer ())
+	return (CTrigger*) GameDataError ("trigger", "buffer", nChecks & GAMEDATA_ERRLOG_BUFFER, pszFile, nLine);
+if (nTrigger < 0)
+	return (CTrigger*) GameDataError ("trigger", "underflow", nChecks & GAMEDATA_ERRLOG_UNDERFLOW, pszFile, nLine);
+if (nTrigger == NO_TRIGGER)
+	return (CTrigger*) GameDataError ("trigger", "null", nChecks & GAMEDATA_ERRLOG_UNDERFLOW, pszFile, nLine);
+if (nTrigger >= trigData.m_nTriggers [nType])
+	return (CTrigger*) GameDataError ("trigger", "overflow", nChecks & GAMEDATA_ERRLOG_OVERFLOW, pszFile, nLine);
+if ((uint32_t) nTrigger >= trigData.triggers [nType].Length ())
+	return (CTrigger*) GameDataError ("trigger", "overflow", nChecks & GAMEDATA_ERRLOG_BUFFER, pszFile, nLine);
+return trigData.triggers [nType] + nTrigger; 
+}
+
+
+CTrigger* CGameData::GeoTrigger (int32_t nTrigger, int32_t nChecks, const char* pszFile, int32_t nLine) 
+{
+return Trigger (0, nTrigger, nChecks, pszFile, nLine);
+}
+
+
+CTrigger* CGameData::ObjTrigger (int32_t nTrigger, int32_t nChecks, const char* pszFile, int32_t nLine) 
+{
+return Trigger (1, nTrigger, nChecks, pszFile, nLine);
+}
+
+
+tRobotInfo* CGameData::RobotInfo (int32_t nId, int32_t nChecks, const char* pszFile, int32_t nLine) 
+{
+int32_t bD1 = gameStates.app.bD1Mission && (nId < botData.nTypes [1]);
+CArray<tRobotInfo>& a = botData.info [bD1];
+if (!a.Buffer ())
+	return (tRobotInfo*) GameDataError ("robot info", "buffer", nChecks & GAMEDATA_ERRLOG_BUFFER, pszFile, nLine);
+if (nId < 0)
+	return (tRobotInfo*) GameDataError ("robot info", "underflow", nChecks & GAMEDATA_ERRLOG_UNDERFLOW, pszFile, nLine);
+if ((uint32_t) nId >= a.Length ())
+	return (tRobotInfo*) GameDataError ("robot info", "overflow", nChecks & GAMEDATA_ERRLOG_OVERFLOW, pszFile, nLine);
+if (nId >= botData.nTypes [bD1])
+	return (tRobotInfo*) GameDataError ("robot info", "overflow", nChecks & GAMEDATA_ERRLOG_OVERFLOW, pszFile, nLine);
+return a + nId; 
+}
+
+
+tRobotInfo* CGameData::RobotInfo (CObject* pObj, int32_t nChecks, const char* pszFile, int32_t nLine) 
+{
+if (!pObj || !Object (pObj->Index (), GAMEDATA_ERRLOG_ALL, pszFile, nLine))
+	 return (tRobotInfo*) GameDataError ("robot info", "object buffer", nChecks, pszFile, nLine);
+if ((nChecks & GAMEDATA_ERRLOG_TYPE) && !pObj->IsRobot () && !pObj->IsReactor ())
+	return (tRobotInfo*) GameDataError ("robot info", "object type", nChecks, pszFile, nLine);
+return RobotInfo (pObj->Id (), nChecks, pszFile, nLine);
+}
+
+
+CWeaponInfo* CGameData::WeaponInfo (int32_t nId, int32_t bD1, int32_t nChecks, const char* pszFile, int32_t nLine) 
+{
+CArray<CWeaponInfo>& a = weaponData.info [(bD1 < 0) ? gameStates.app.bD1Mission : bD1];
+if (!a.Buffer ())
+	return (CWeaponInfo*) GameDataError ("weapon info", "buffer", nChecks & GAMEDATA_ERRLOG_BUFFER, pszFile, nLine);
+if (nId < 0)
+	return (CWeaponInfo*) GameDataError ("weapon info", "underflow", nChecks & GAMEDATA_ERRLOG_UNDERFLOW, pszFile, nLine);
+if (nId >= gameData.weaponData.nTypes [gameStates.app.bD1Mission])
+	return (CWeaponInfo*) GameDataError ("weapon info", "overflow", nChecks & GAMEDATA_ERRLOG_OVERFLOW, pszFile, nLine);
+return a + nId; 
+}
+
+
+CWeaponInfo* CGameData::WeaponInfo (CObject* pObj, int32_t bD1, int32_t nChecks, const char* pszFile, int32_t nLine) 
+{
+if (!pObj || !Object (pObj->Index (), GAMEDATA_ERRLOG_ALL, pszFile, nLine))
+	 return (CWeaponInfo*) GameDataError ("weapon info", "object buffer", nChecks, pszFile, nLine);
+if ((nChecks & GAMEDATA_ERRLOG_TYPE) && (pObj->Type () != OBJ_WEAPON))
+	return (CWeaponInfo*) GameDataError ("weapon info", "object type", nChecks, pszFile, nLine);
+return WeaponInfo (pObj->Id (), bD1, nChecks, pszFile, nLine);
+}
+
+#endif
+
+static inline CWeaponInfo *WI_Unnerfed (int32_t nId) 
+{
+return gameData.WeaponInfo (nId, ((nId < gameData.weaponData.nTypes [1]) && EGI_FLAG (bUnnerfD1Weapons, 0, 0, 0)) ? 1 : -1);
+}
+
+fix WI_Strength (int32_t nId, int32_t nDifficulty) 
+{
+CWeaponInfo *pInfo = WI_Unnerfed (nId);
+return pInfo ? pInfo->strength [Clamp (nDifficulty, 0, DIFFICULTY_LEVEL_COUNT - 1)] : 0;
+}
+
+fix WI_FlashSize (int32_t nId) 
+{
+CWeaponInfo *pInfo = WI_Unnerfed (nId);
+return pInfo ? pInfo->xFlashSize : 0;
+}
+
+fix WI_ImpactSize (int32_t nId) 
+{
+CWeaponInfo *pInfo = WI_Unnerfed (nId);
+return pInfo ? pInfo->xImpactSize : 0;
+}
+
+fix WI_EnergyUsage (int32_t nId) 
+{
+CWeaponInfo *pInfo = WI_Unnerfed (nId);
+return pInfo ? pInfo->xEnergyUsage : 0;
+}
+
+fix WI_FireWait (int32_t nId) 
+{
+CWeaponInfo *pInfo = WI_Unnerfed (nId);
+return pInfo ? pInfo->xFireWait : 0;
+}
+
+fix WI_Speed (int32_t nId, int32_t nDifficulty) 
+{
+CWeaponInfo *pInfo = WI_Unnerfed (nId);
+return pInfo ? pInfo->speed [Clamp (nDifficulty, 0, DIFFICULTY_LEVEL_COUNT - 1)] : 0;
+}
+
+fix WI_DamageRadius (int32_t nId)	
+{
+CWeaponInfo *pInfo = WI_Unnerfed (nId);
+return pInfo ? pInfo->xDamageRadius : 0;
 }
 
 // ----------------------------------------------------------------------------

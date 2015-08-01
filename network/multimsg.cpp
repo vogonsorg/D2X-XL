@@ -26,31 +26,31 @@
 
 fix xPingReturnTime;
 
-extern int WhoIsGameHost ();
+extern int32_t WhoIsGameHost ();
 extern char bNameReturning;
 
 //-----------------------------------------------------------------------------
 
 void MultiSendMessage (void)
 {
-	int bufP = 0;
+	int32_t pBuffer = 0;
 
 if (gameData.multigame.msg.nReceiver != -1) {
-	gameData.multigame.msg.buf [bufP++] = (char)MULTI_MESSAGE;            
-	gameData.multigame.msg.buf [bufP++] = (char)N_LOCALPLAYER;                       
-	strncpy (gameData.multigame.msg.buf + bufP, gameData.multigame.msg.szMsg, MAX_MESSAGE_LEN); 
-	bufP += MAX_MESSAGE_LEN;
-	gameData.multigame.msg.buf [bufP-1] = '\0';
-	MultiSendData (gameData.multigame.msg.buf, bufP, 0);
+	gameData.multigame.msg.buf [pBuffer++] = (uint8_t) MULTI_MESSAGE;            
+	gameData.multigame.msg.buf [pBuffer++] = (uint8_t) N_LOCALPLAYER;                       
+	strncpy ((char*) gameData.multigame.msg.buf + pBuffer, gameData.multigame.msg.szMsg, MAX_MESSAGE_LEN); 
+	pBuffer += MAX_MESSAGE_LEN;
+	gameData.multigame.msg.buf [pBuffer-1] = '\0';
+	MultiSendData (gameData.multigame.msg.buf, pBuffer, 0);
 	gameData.multigame.msg.nReceiver = -1;
 	}
 }
 
 //-----------------------------------------------------------------------------
 
-void MultiDefineMacro (int key)
+void MultiDefineMacro (int32_t key)
 {
-int nMsg = 0;
+int32_t nMsg = 0;
 #if !DBG
 if (!(gameOpts->multi.bUseMacros && IsMultiGame))
 	return;
@@ -80,50 +80,50 @@ if (nMsg)
 
 char szFeedbackResult [200];
 
-int MultiMessageFeedback (void)
+int32_t MultiMessageFeedback (void)
 {
-	int bFound = 0;
-	int i, l;
+	int32_t bFound = 0;
+	int32_t i, l;
 
 char *colon = strrchr (gameData.multigame.msg.szMsg, ':');
 if (!colon)
 	return 0;
-l = (int) (colon - gameData.multigame.msg.szMsg);
+l = (int32_t) (colon - gameData.multigame.msg.szMsg);
 if (!l || (l > CALLSIGN_LEN))
 	return 0;
 sprintf (szFeedbackResult, "%s ", TXT_MESSAGE_SENT_TO);
 if (IsTeamGame && (atoi (gameData.multigame.msg.szMsg) > 0) && 
 	 (atoi (gameData.multigame.msg.szMsg) < 3)) {
 	sprintf (szFeedbackResult+strlen (szFeedbackResult), "%s '%s'", 
-				TXT_TEAM, netGame.m_info.szTeamName [atoi (gameData.multigame.msg.szMsg)-1]);
+				TXT_TEAM, netGameInfo.m_info.szTeamName [atoi (gameData.multigame.msg.szMsg)-1]);
 	bFound = 1;
 	}
 if (!bFound)
 	if (IsTeamGame) {
-		for (i = 0; i < gameData.multiplayer.nPlayers; i++) {
-			if (!strnicmp (netGame.m_info.szTeamName [i], gameData.multigame.msg.szMsg, l)) {
+		for (i = 0; i < N_PLAYERS; i++) {
+			if (!strnicmp (netGameInfo.m_info.szTeamName [i], gameData.multigame.msg.szMsg, l)) {
 				if (bFound)
 					strcat (szFeedbackResult, ", ");
 				bFound++;
 				if (!(bFound % 4))
 					strcat (szFeedbackResult, "\n");
 				sprintf (szFeedbackResult+strlen (szFeedbackResult), "%s '%s'", 
-							TXT_TEAM, netGame.m_info.szTeamName [i]);
+							TXT_TEAM, netGameInfo.m_info.szTeamName [i]);
 				}
 			}
 		}
 if (!bFound)
-	for (i = 0; i < gameData.multiplayer.nPlayers; i++) {
-		if ((!strnicmp (gameData.multiplayer.players [i].callsign, gameData.multigame.msg.szMsg, l)) && 
+	for (i = 0; i < N_PLAYERS; i++) {
+		if ((!strnicmp (PLAYER (i).callsign, gameData.multigame.msg.szMsg, l)) && 
 			(i != N_LOCALPLAYER) && 
-			(gameData.multiplayer.players [i].connected)) {
+			(PLAYER (i).connected)) {
 			if (bFound)
 				strcat (szFeedbackResult, ", ");
 			bFound++;
 			if (!(bFound % 4))
 				strcat (szFeedbackResult, "\n");
 			sprintf (szFeedbackResult+strlen (szFeedbackResult), "%s", 
-						gameData.multiplayer.players [i].callsign);
+						PLAYER (i).callsign);
 			}
 		}
 if (!bFound)
@@ -138,7 +138,7 @@ return 1;
 
 //-----------------------------------------------------------------------------
 
-void MultiSendMacro (int key)
+void MultiSendMacro (int32_t key)
 {
 if (!(gameOpts->multi.bUseMacros && IsMultiGame))
 	return;
@@ -171,16 +171,16 @@ MultiMessageFeedback ();
 
 //-----------------------------------------------------------------------------
 
-void MultiDoStartTyping (char *buf)
+void MultiDoStartTyping (uint8_t* buf)
 {
-gameStates.multi.bPlayerIsTyping [int (buf [1])] = 1;
+gameStates.multi.bPlayerIsTyping [int32_t (buf [1])] = 1;
 }
 
 //-----------------------------------------------------------------------------
 
-void MultiDoQuitTyping (char *buf)
+void MultiDoQuitTyping (uint8_t* buf)
 {
-gameStates.multi.bPlayerIsTyping [int (buf [1])] = 0;
+gameStates.multi.bPlayerIsTyping [int32_t (buf [1])] = 0;
 }
 
 //-----------------------------------------------------------------------------
@@ -191,7 +191,7 @@ if (gameStates.multi.bPlayerIsTyping [N_LOCALPLAYER]) {
 	if (gameStates.app.nSDLTicks [0] - gameData.multigame.nTypingTimeout > 1000) {
 		gameData.multigame.nTypingTimeout = gameStates.app.nSDLTicks [0];
 		gameData.multigame.msg.buf [0] = (char) MULTI_START_TYPING;
-		gameData.multigame.msg.buf [1] = (char) N_LOCALPLAYER; 
+		gameData.multigame.msg.buf [1] = N_LOCALPLAYER; 
 		gameData.multigame.msg.buf [2] = gameData.multigame.msg.bSending;
 		MultiSendData (gameData.multigame.msg.buf, 3, 0);
 		}
@@ -224,16 +224,16 @@ gameData.multigame.msg.bDefining = 0;
 gameData.multigame.msg.nIndex = 0;
 gameStates.multi.bPlayerIsTyping [N_LOCALPLAYER] = 0;
 gameData.multigame.msg.buf [0] = (char) MULTI_QUIT_TYPING;
-gameData.multigame.msg.buf [1] = (char) N_LOCALPLAYER; 
+gameData.multigame.msg.buf [1] = N_LOCALPLAYER; 
 gameData.multigame.msg.buf [2] = 0;
 MultiSendData (gameData.multigame.msg.buf, 3, 0);
 }
 
 //-----------------------------------------------------------------------------
 
-int KickPlayer (int bBan)
+int32_t KickPlayer (int32_t bBan)
 {
-	int i, name_index = 5 - bBan;
+	int32_t i, name_index = 5 - bBan;
 	const char *pszKick = GT (589 + bBan);
 
 if (strlen (gameData.multigame.msg.szMsg) > 5)
@@ -241,7 +241,7 @@ if (strlen (gameData.multigame.msg.szMsg) > 5)
 		name_index++;
 
 if (!IAmGameHost ()) {
-	HUDInitMessage (TXT_KICK_RIGHTS, gameData.multiplayer.players [WhoIsGameHost ()].callsign, pszKick);
+	HUDInitMessage (TXT_KICK_RIGHTS, PLAYER (WhoIsGameHost ()).callsign, pszKick);
 	MultiSendMsgQuit ();
 	return 1;
 	}
@@ -252,18 +252,18 @@ if (strlen (gameData.multigame.msg.szMsg) <= (size_t) name_index) {
 	}
 
 if (gameData.multigame.msg.szMsg [name_index] == '#' && ::isdigit (gameData.multigame.msg.szMsg [name_index+1])) {
-	int players [MAX_PLAYERS];
-	int listpos = gameData.multigame.msg.szMsg [name_index+1] - '0';
+	int32_t players [MAX_PLAYERS];
+	int32_t listpos = gameData.multigame.msg.szMsg [name_index+1] - '0';
 
 	if (gameData.multigame.score.bShowList == 1 || gameData.multigame.score.bShowList == 2) {
-		if (listpos == 0 || listpos  >= gameData.multiplayer.nPlayers) {
+		if (listpos == 0 || listpos  >= N_PLAYERS) {
 			HUDInitMessage (TXT_KICK_PLR, pszKick);
 			MultiSendMsgQuit ();
 			return 1;
 			}
 		MultiGetKillList (players);
 		i = players [listpos];
-		if ((i != N_LOCALPLAYER) && (gameData.multiplayer.players [i].connected))
+		if ((i != N_LOCALPLAYER) && (PLAYER (i).connected))
 			goto kick_player;
 		}
 	else 
@@ -272,18 +272,15 @@ if (gameData.multigame.msg.szMsg [name_index] == '#' && ::isdigit (gameData.mult
 	return 1;
 	}
 
-for (i = 0; i < gameData.multiplayer.nPlayers; i++)
-	if ((!strnicmp (gameData.multiplayer.players [i].callsign, &gameData.multigame.msg.szMsg [name_index], strlen (gameData.multigame.msg.szMsg)-name_index)) && (i != N_LOCALPLAYER) && (gameData.multiplayer.players [i].connected)) {
+for (i = 0; i < N_PLAYERS; i++)
+	if ((!strnicmp (PLAYER (i).callsign, &gameData.multigame.msg.szMsg [name_index], strlen (gameData.multigame.msg.szMsg)-name_index)) && (i != N_LOCALPLAYER) && (PLAYER (i).connected)) {
 kick_player:;
 		if (gameStates.multi.nGameType  >= IPX_GAME)
-			NetworkDumpPlayer (
-				netPlayers [0].m_info.players [i].network.Server (), 
-				netPlayers [0].m_info.players [i].network.Node (), 
-				7);
+			NetworkDumpPlayer (NETPLAYER (i).network.Network (), NETPLAYER (i).network.Node (), DUMP_KICKED);
 
-		HUDInitMessage (TXT_DUMPING, gameData.multiplayer.players [i].callsign);
+		HUDInitMessage (TXT_DUMPING, PLAYER (i).callsign);
 		if (bBan)
-			banList.Add (gameData.multiplayer.players [i].callsign);
+			banList.Add (PLAYER (i).callsign);
 		MultiSendMsgQuit ();
 		return 1;
 		}
@@ -292,17 +289,17 @@ return 0;
 
 //-----------------------------------------------------------------------------
 
-int PingPlayer (int i)
+int32_t PingPlayer (int32_t i)
 {
 if (IsNetworkGame) {
 	if (i >= 0) {
 		pingStats [i].launchTime = SDL_GetTicks (); //TimerGetFixedSeconds ();
-		NetworkSendPing ((ubyte) i);
+		NetworkSendPing ((uint8_t) i);
 		MultiSendMsgQuit ();
 		pingStats [i].sent++;
 		}
 	else {
-		int name_index = 5;
+		int32_t name_index = 5;
 		if (strlen (gameData.multigame.msg.szMsg) > 5)
 			while (gameData.multigame.msg.szMsg [name_index] == ' ')
 				name_index++;
@@ -310,12 +307,12 @@ if (IsNetworkGame) {
 			HUDInitMessage (TXT_PING_NAME);
 			return 1;
 			}
-		for (i = 0; i < gameData.multiplayer.nPlayers; i++) {
-			if ((!strnicmp (gameData.multiplayer.players [i].callsign, &gameData.multigame.msg.szMsg [name_index], strlen (gameData.multigame.msg.szMsg)-name_index)) && 
-				 (i != N_LOCALPLAYER) && (gameData.multiplayer.players [i].connected)) {
+		for (i = 0; i < N_PLAYERS; i++) {
+			if ((!strnicmp (PLAYER (i).callsign, &gameData.multigame.msg.szMsg [name_index], strlen (gameData.multigame.msg.szMsg)-name_index)) && 
+				 (i != N_LOCALPLAYER) && (PLAYER (i).connected)) {
 				pingStats [i].launchTime = SDL_GetTicks (); //TimerGetFixedSeconds ();
-				NetworkSendPing ((ubyte) i);
-				HUDInitMessage (TXT_PINGING, gameData.multiplayer.players [i].callsign);
+				NetworkSendPing ((uint8_t) i);
+				HUDInitMessage (TXT_PINGING, PLAYER (i).callsign);
 				MultiSendMsgQuit ();
 				return 1;
 				}
@@ -334,7 +331,7 @@ return 0;
 
 //-----------------------------------------------------------------------------
 
-int HandicapPlayer (void)
+int32_t HandicapPlayer (void)
 {
 	char *mytempbuf = gameData.multigame.msg.szMsg + 9;
 
@@ -356,27 +353,27 @@ return 0;
 
 //-----------------------------------------------------------------------------
 
-int MovePlayer (void)
+int32_t MovePlayer (void)
 {
-	int	i;
+	int32_t	i;
 
 if (IsNetworkGame && IsTeamGame) {
-	int name_index = 5;
+	int32_t name_index = 5;
 	if (strlen (gameData.multigame.msg.szMsg) > 5)
 		while (gameData.multigame.msg.szMsg [name_index] == ' ')
 			name_index++;
 
 	if (!IAmGameHost ()) {
-		HUDInitMessage (TXT_MOVE_RIGHTS, gameData.multiplayer.players [WhoIsGameHost ()].callsign);
+		HUDInitMessage (TXT_MOVE_RIGHTS, PLAYER (WhoIsGameHost ()).callsign);
 		return 1;
 		}
 	if (strlen (gameData.multigame.msg.szMsg) <= (size_t) name_index) {
 		HUDInitMessage (TXT_MOVE_NAME);
 		return 1;
 		}
-	for (i = 0; i < gameData.multiplayer.nPlayers; i++)
-		if ((!strnicmp (gameData.multiplayer.players [i].callsign, &gameData.multigame.msg.szMsg [name_index], strlen (gameData.multigame.msg.szMsg)-name_index)) && (gameData.multiplayer.players [i].connected)) {
-			if ((gameData.app.GameMode (GM_CAPTURE)) && (gameData.multiplayer.players [i].flags & PLAYER_FLAGS_FLAG)) {
+	for (i = 0; i < N_PLAYERS; i++)
+		if ((!strnicmp (PLAYER (i).callsign, &gameData.multigame.msg.szMsg [name_index], strlen (gameData.multigame.msg.szMsg)-name_index)) && (PLAYER (i).connected)) {
+			if ((gameData.appData.GameMode (GM_CAPTURE)) && (PLAYER (i).flags & PLAYER_FLAGS_FLAG)) {
 				HUDInitMessage (TXT_MOVE_FLAG);
 				return 1;
 				}
@@ -401,7 +398,7 @@ else if (!strnicmp (gameData.multigame.msg.szMsg, TXT_HANDICAP, 9)) {
 		return;
 	}
 else if (!strnicmp (gameData.multigame.msg.szMsg, TXT_BOMBS_OFF, 7))
-	netGame.m_info.DoSmartMine = 0;
+	netGameInfo.m_info.DoSmartMine = 0;
 else if (!(gameStates.render.cockpit.bShowPingStats || strnicmp (gameData.multigame.msg.szMsg, TXT_PING, 5))) {
 	if (PingPlayer (-1))
 		return;
@@ -437,7 +434,7 @@ MultiSendMsgQuit ();
 
 //-----------------------------------------------------------------------------
 
-void MultiMsgInputSub (int key)
+void MultiMsgInputSub (int32_t key)
 {
 switch (key) {
 	case KEY_F8:
@@ -464,14 +461,14 @@ switch (key) {
 
 	default:
 		if (key > 0) {
-			int ascii = KeyToASCII (key);
+			int32_t ascii = KeyToASCII (key);
 			if (ascii < 255) {
 				if (gameData.multigame.msg.nIndex < MAX_MESSAGE_LEN-2) {
 					gameData.multigame.msg.szMsg [gameData.multigame.msg.nIndex++] = ascii;
 					gameData.multigame.msg.szMsg [gameData.multigame.msg.nIndex] = 0;
 					}
 				else if (gameData.multigame.msg.bSending) {
-					int i;
+					int32_t i;
 					char * ptext, *pcolon;
 					ptext = NULL;
 					gameData.multigame.msg.szMsg [gameData.multigame.msg.nIndex++] = ascii;
@@ -491,7 +488,7 @@ switch (key) {
 							strcpy (pcolon+1, ptext);
 						else
 							strcpy (gameData.multigame.msg.szMsg, ptext);
-						gameData.multigame.msg.nIndex = (int) strlen (gameData.multigame.msg.szMsg);
+						gameData.multigame.msg.nIndex = (int32_t) strlen (gameData.multigame.msg.szMsg);
 						}
 					}
 				}
@@ -504,7 +501,7 @@ switch (key) {
 void MultiSendMsgDialog (void)
 {
 	CMenu	m (1);
-	int	choice;
+	int32_t	choice;
 
 if (!IsMultiGame)
 	return;
@@ -520,86 +517,86 @@ if ((choice > -1) && (strlen (gameData.multigame.msg.szMsg) > 0)) {
 
 //-----------------------------------------------------------------------------
 
-static int IsTeamId (char *bufP, int nLen)
+static int32_t IsTeamId (char *pBuffer, int32_t nLen)
 {
-	int	i;
+	int32_t	i;
 
 if (!IsTeamGame)
 	return 0;
-i = atoi (bufP);
+i = atoi (pBuffer);
 if ((i >= 1) && (i <= 2))
 	return 1;
 for (i = 0; i < 2; i++)
-	if (!strnicmp (netGame.m_info.szTeamName [i], bufP, nLen))
+	if (!strnicmp (netGameInfo.m_info.szTeamName [i], pBuffer, nLen))
 		return 1;
 return 0;
 }
 
 //-----------------------------------------------------------------------------
 
-static int IsMyTeamId (char *bufP, int nLen)
+static int32_t IsMyTeamId (char *pBuffer, int32_t nLen)
 {
-	int	i;
+	int32_t	i;
 
 if (!IsTeamGame)
 	return 0;
 i = GetTeam (N_LOCALPLAYER);
-if (i == atoi (bufP) - 1)
+if (i == atoi (pBuffer) - 1)
 	return 1;
-if (!strnicmp (netGame.m_info.szTeamName [i], bufP, nLen))
+if (!strnicmp (netGameInfo.m_info.szTeamName [i], pBuffer, nLen))
 	return 1;
 return 0;
 }
 
 //-----------------------------------------------------------------------------
 
-static int IsPlayerId (char *bufP, int nLen)
+static int32_t IsPlayerId (char *pBuffer, int32_t nLen)
 {
-	int	i;
+	int32_t	i;
 
-for (i = 0; i < gameData.multiplayer.nPlayers; i++)
-	if (!strnicmp (gameData.multiplayer.players [i].callsign, bufP, nLen))
+for (i = 0; i < N_PLAYERS; i++)
+	if (!strnicmp (PLAYER (i).callsign, pBuffer, nLen))
 		return 1;
 return 0;
 }
 
 //-----------------------------------------------------------------------------
 
-static int IsMyPlayerId (char *bufP, int nLen)
+static int32_t IsMyPlayerId (char *pBuffer, int32_t nLen)
 {
-return strnicmp (LOCALPLAYER.callsign, bufP, nLen) == 0;
+return strnicmp (LOCALPLAYER.callsign, pBuffer, nLen) == 0;
 }
 
 //-----------------------------------------------------------------------------
 
-void MultiDoMsg (char *buf)
+void MultiDoMsg (uint8_t* buf)
 {
 	char *colon;
 	char *tilde, msgBuf [200];
-	int tloc, t, l;
-	int bufP = 2;
+	int32_t tloc, t, l;
+	int32_t pBuffer = 2;
 
-if ((tilde = strchr (buf + bufP, '$'))) { 
-	tloc = (int) (tilde - (buf + bufP));			
+if ((tilde = strchr ((char*) buf + pBuffer, '$'))) { 
+	tloc = (int32_t) (tilde - ((char*) buf + pBuffer));			
 	if (tloc > 0)
-		strncpy (msgBuf, buf + bufP, tloc);
+		strncpy (msgBuf, (char*) buf + pBuffer, tloc);
 	strcpy (msgBuf + tloc, LOCALPLAYER.callsign);
-	strcpy (msgBuf + strlen (LOCALPLAYER.callsign) + tloc, buf + bufP + tloc + 1);
-	strcpy (buf + bufP, msgBuf);
+	strcpy (msgBuf + strlen (LOCALPLAYER.callsign) + tloc, (char*) buf + pBuffer + tloc + 1);
+	strcpy ((char*) buf + pBuffer, msgBuf);
 	}
-if ((colon = strrchr (buf + bufP, ':'))) {	//message may be addressed to a certain team or CPlayerData
-	l = (int) (colon - (buf + bufP));
+if ((colon = strrchr ((char*) buf + pBuffer, ':'))) {	//message may be addressed to a certain team or CPlayerData
+	l = (int32_t) (colon - ((char*) buf + pBuffer));
 	if (l && (l <= CALLSIGN_LEN) &&
-		 ((IsTeamId (buf + bufP, l) && !IsMyTeamId (buf + bufP, l)) ||
-		  (IsPlayerId (buf + bufP, l) && !IsMyPlayerId (buf + bufP, l))))
+		 ((IsTeamId ((char*) buf + pBuffer, l) && !IsMyTeamId ((char*) buf + pBuffer, l)) ||
+		  (IsPlayerId ((char*) buf + pBuffer, l) && !IsMyPlayerId ((char*) buf + pBuffer, l))))
 		return;
 	}
 msgBuf [0] = (char) 1;
 msgBuf [1] = (char) (127 + 128);
 msgBuf [2] = (char) (95 + 128);
 msgBuf [3] = (char) (0 + 128);
-strcpy (msgBuf + 4, gameData.multiplayer.players [int (buf [1])].callsign);
-t = (int) strlen (msgBuf);
+strcpy (msgBuf + 4, PLAYER (int32_t (buf [1])).callsign);
+t = (int32_t) strlen (msgBuf);
 msgBuf [t] = ':';
 msgBuf [t+1] = ' ';
 msgBuf [t+2] = (char) 1;

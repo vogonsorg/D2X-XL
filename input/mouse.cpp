@@ -42,14 +42,14 @@ memset (&mouseData, 0, sizeof (mouseData));
 //------------------------------------------------------------------------------
 
 #if DBG
-int nDbgButton = -1;
+int32_t nDbgButton = -1;
 #endif
 
 void MouseButtonHandler (SDL_MouseButtonEvent *mbe)
 {
 	// to bad, SDL buttons use a different mapping as descent expects,
 	// this is at least true and tested for the first three buttons 
-	int button_remap[11] = {
+	int32_t button_remap[11] = {
 		D2_MB_LEFT,
 		D2_MB_MIDDLE,
 		D2_MB_RIGHT,
@@ -63,7 +63,7 @@ void MouseButtonHandler (SDL_MouseButtonEvent *mbe)
 		D2_MB_HEAD_RIGHT
 	};
 
-	int button = button_remap [mbe->button - 1]; // -1 since SDL seems to start counting at 1
+	int32_t button = button_remap [mbe->button - 1]; // -1 since SDL seems to start counting at 1
 	struct tMouseButton *mb = mouseData.buttons + button;
 	fix xCurTime = TimerGetFixedSeconds ();
 
@@ -123,7 +123,7 @@ void MouseMotionHandler (SDL_MouseMotionEvent *mme)
 
 void MouseFlush (void)	// clears all mouse events...
 {
-	int i;
+	int32_t i;
 	fix xCurTime;
 
 event_poll (SDL_MOUSEEVENTMASK);
@@ -136,12 +136,8 @@ SDL_GetMouseState (&mouseData.x, &mouseData.y); // necessary because polling onl
 
 //========================================================================
 
-void MouseGetPos (int *x, int *y)
+void MouseGetPos (int32_t *x, int32_t *y)
 {
-#ifndef FAST_EVENTPOLL
-if (!bFastPoll)
-   event_poll(SDL_MOUSEEVENTMASK);	//polled in main/KConfig.c:read_bm_all()
-#endif
 #ifdef WIN32_WCE // needed here only for touchpens?
 # ifdef LANDSCAPE
 	SDL_GetMouseState (&mouseData.y, &mouseData.x);
@@ -155,15 +151,10 @@ if (!bFastPoll)
 
 //------------------------------------------------------------------------------
 
-void MouseGetDelta (int *dx, int *dy)
+void MouseGetDelta (int32_t *dx, int32_t *dy)
 {
-#ifdef FAST_EVENTPOLL
 if (gameOpts->legacy.bInput)
    event_poll (SDL_MOUSEEVENTMASK);	//polled in main/KConfig.c:read_bm_all()
-#else
-if (!bFastPoll)
-   event_poll (SDL_MOUSEEVENTMASK);	//polled in main/KConfig.c:read_bm_all()
-#endif
 *dx = mouseData.dx;
 *dy = mouseData.dy;
 mouseData.dx = 0;
@@ -172,69 +163,52 @@ mouseData.dy = 0;
 
 //------------------------------------------------------------------------------
 
-void MouseGetPosZ (int *x, int *y, int *z)
+void MouseGetPosZ (int32_t *x, int32_t *y, int32_t *z)
 {
-#ifndef FAST_EVENTPOLL
-if (!bFastPoll)
-   event_poll(SDL_MOUSEEVENTMASK);	//polled in main/KConfig.c:read_bm_all()
-#endif
-	*x=mouseData.x;
-	*y=mouseData.y;
-	*z=mouseData.z;
+*x = mouseData.x;
+*y = mouseData.y;
+*z = mouseData.z;
 }
 
 //------------------------------------------------------------------------------
 
-void MouseGetDeltaZ (int *dx, int *dy, int *dz)
+void MouseGetDeltaZ (int32_t *dx, int32_t *dy, int32_t *dz)
 {
-#ifndef FAST_EVENTPOLL
-if (!bFastPoll)
-   event_poll(SDL_MOUSEEVENTMASK);	//polled in main/KConfig.c:read_bm_all()
-#endif
-	*dx = mouseData.dx;
-	*dy = mouseData.dy;
-	*dz = mouseData.dz;
-	mouseData.dx = 0;
-	mouseData.dy = 0;
-	mouseData.dz = 0;
+*dx = mouseData.dx;
+*dy = mouseData.dy;
+*dz = mouseData.dz;
+mouseData.dx = 0;
+mouseData.dy = 0;
+mouseData.dz = 0;
 }
 
 //------------------------------------------------------------------------------
 
-int MouseGetButtons (void)
+int32_t MouseGetButtons (void)
 {
-	int i;
-	uint flag = 1;
-	int status = 0;
+	uint32_t flag = 1;
+	int32_t status = 0;
 
-#ifndef FAST_EVENTPOLL
-if (!bFastPoll)
-   event_poll (SDL_MOUSEEVENTMASK);	//polled in main/KConfig.c:read_bm_all()
-#endif
-	for (i = 0; i < MOUSE_MAX_BUTTONS; i++) {
-		if (mouseData.buttons [i].pressed || mouseData.buttons [i].rotated)
-			status |= flag;
-		flag <<= 1;
+for (int32_t i = 0; i < MOUSE_MAX_BUTTONS; i++) {
+	if (mouseData.buttons [i].pressed || mouseData.buttons [i].rotated)
+		status |= flag;
+	flag <<= 1;
 	}
 return status;
 }
 
 //------------------------------------------------------------------------------
 
-void MouseGetCybermanPos (int *x, int *y)
+void MouseGetCybermanPos (int32_t *x, int32_t *y)
 {
 }
 
 //------------------------------------------------------------------------------
 // Returns how many times this button has went down since last call
-int MouseButtonDownCount (int button)
+int32_t MouseButtonDownCount (int32_t button)
 {
-	int count;
+	int32_t count;
 
-#ifndef FAST_EVENTPOLL
-if (!bFastPoll)
-   event_poll(SDL_MOUSEEVENTMASK);	//polled in main/KConfig.c:read_bm_all()
-#endif
 count = mouseData.buttons [button].numDowns;
 mouseData.buttons [button].numDowns = 0;
 return count;
@@ -242,42 +216,31 @@ return count;
 
 //------------------------------------------------------------------------------
 // Returns how long this button has been down since last call.
-fix MouseButtonDownTime (int button)
+fix MouseButtonDownTime (int32_t button)
 {
 	fix timeDown, time;
 
-#ifndef FAST_EVENTPOLL
-if (!bFastPoll)
-   event_poll(SDL_MOUSEEVENTMASK);	//polled in main/KConfig.c:read_bm_all()
-#endif
-	if (!mouseData.buttons [button].pressed) {
-		timeDown = mouseData.buttons [button].xTimeHeldDown;
-		if (!timeDown && mouseData.buttons [button].rotated)
-			timeDown = (fix) (MouseButtonDownCount (button) * controls.PollTime ());
-		mouseData.buttons [button].xTimeHeldDown = 0;
-		}
-	else {
-		time = TimerGetFixedSeconds();
-		timeDown = time - mouseData.buttons [button].xTimeHeldDown;
-		mouseData.buttons [button].xTimeHeldDown = time;
+if (!mouseData.buttons [button].pressed) {
+	timeDown = mouseData.buttons [button].xTimeHeldDown;
+	if (!timeDown && mouseData.buttons [button].rotated)
+		timeDown = (fix) (MouseButtonDownCount (button) * controls.PollTime ());
+	mouseData.buttons [button].xTimeHeldDown = 0;
+	}
+else {
+	time = TimerGetFixedSeconds();
+	timeDown = time - mouseData.buttons [button].xTimeHeldDown;
+	mouseData.buttons [button].xTimeHeldDown = time;
 	}
 return timeDown;
 }
 
 //------------------------------------------------------------------------------
 // Returns 1 if this button is currently down
-int MouseButtonState (int button)
+int32_t MouseButtonState (int32_t button)
 {
-	int h;
-
-#ifndef FAST_EVENTPOLL
-if (!bFastPoll)
-   event_poll(SDL_MOUSEEVENTMASK);	//polled in main/KConfig.c:read_bm_all()
-#else
 if (gameOpts->legacy.bInput)
    event_poll(SDL_MOUSEEVENTMASK);	//polled in main/KConfig.c:read_bm_all()
-#endif
-h = mouseData.buttons [button].rotated;
+int32_t h = mouseData.buttons [button].rotated;
 mouseData.buttons [button].rotated = 0;
 return mouseData.buttons [button].pressed || h;
 }

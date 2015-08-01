@@ -22,6 +22,7 @@
 #include "objrender.h"
 #include "objeffects.h"
 #include "hiresmodels.h"
+#include "addon_bitmaps.h"
 #include "hitbox.h"
 
 #ifndef fabsf
@@ -30,14 +31,14 @@
 
 //------------------------------------------------------------------------------
 
-void TransformHitboxf (CObject *objP, CFloatVector *vertList, int iSubObj)
+void TransformHitboxf (CObject *pObj, CFloatVector *vertList, int32_t iSubObj)
 {
 
 	CFloatVector		hv;
-	tHitbox*				phb = gameData.models.hitboxes [objP->ModelId ()].hitboxes + iSubObj;
+	tHitbox*				phb = gameData.modelData.hitboxes [pObj->ModelId ()].hitboxes + iSubObj;
 	CFixVector			vMin = phb->vMin;
 	CFixVector			vMax = phb->vMax;
-	int					i;
+	int32_t				i;
 
 for (i = 0; i < 8; i++) {
 	hv.v.coord.x = X2F (hitBoxOffsets [i].v.coord.x ? vMin.v.coord.x : vMax.v.coord.x);
@@ -51,26 +52,26 @@ for (i = 0; i < 8; i++) {
 
 #if RENDER_HITBOX
 
-static int nDbgBox = -1, nDbgBoxFace = -1;
+static int32_t nDbgBox = -1, nDbgBoxFace = -1;
 
-void RenderHitbox (CObject *objP, float red, float green, float blue, float alpha)
+void RenderHitbox (CObject *pObj, float red, float green, float blue, float alpha)
 {
-if (objP->rType.polyObjInfo.nModel < 0)
+if (pObj->rType.polyObjInfo.nModel < 0)
 	return;
 
 	CFloatVector	dir;
-	tHitbox*			pmhb = gameData.models.hitboxes [objP->ModelId ()].hitboxes.Buffer ();
+	tHitbox*			pmhb = gameData.modelData.hitboxes [pObj->ModelId ()].hitboxes.Buffer ();
 	tCloakInfo		ci = {0, FADE_LEVELS, 0, 0, 0, 0, 0};
-	int				i, j, iBox, nBoxes, bHit = 0;
+	int32_t			i, j, iBox, nBoxes, bHit = 0;
 	float				fFade;
 
 if (!SHOW_OBJ_FX)
 	return;
-if (objP->info.nType == OBJ_PLAYER) {
-	if (!EGI_FLAG (bPlayerShield, 0, 1, 0))
+if (pObj->info.nType == OBJ_PLAYER) {
+	if (!EGI_FLAG (nShieldEffect, 0, 1, gameOpts->render.effects.bShields))
 		return;
-	if (gameData.multiplayer.players [objP->info.nId].flags & PLAYER_FLAGS_CLOAKED) {
-		if (!GetCloakInfo (objP, 0, 0, &ci))
+	if (PLAY (pObj->info.nId).flags & PLAYER_FLAGS_CLOAKED) {
+		if (!GetCloakInfo (pObj, 0, 0, &ci))
 			return;
 		fFade = (float) ci.nFadeValue / (float) FADE_LEVELS;
 		red *= fFade;
@@ -79,11 +80,11 @@ if (objP->info.nType == OBJ_PLAYER) {
 		}
 
 	}
-else if (objP->info.nType == OBJ_ROBOT) {
-	if (!(gameOpts->render.effects.bEnabled && gameOpts->render.effects.bRobotShields))
+else if (pObj->info.nType == OBJ_ROBOT) {
+	if (!(gameOpts->render.effects.bEnabled && gameOpts->render.effects.bShields > 1))
 		return;
-	if (objP->cType.aiInfo.CLOAKED) {
-		if (!GetCloakInfo (objP, 0, 0, &ci))
+	if (pObj->cType.aiInfo.CLOAKED) {
+		if (!GetCloakInfo (pObj, 0, 0, &ci))
 			return;
 		fFade = (float) ci.nFadeValue / (float) FADE_LEVELS;
 		red *= fFade;
@@ -92,7 +93,7 @@ else if (objP->info.nType == OBJ_ROBOT) {
 		}
 	}
 if (!CollisionModel ()) {
-	DrawShieldSphere (objP, red, green, blue, alpha, 1);
+	DrawShieldSphere (pObj, red, green, blue, alpha, 1);
 	return;
 	}
 else if (CollisionModel () == 1) {
@@ -101,7 +102,7 @@ else if (CollisionModel () == 1) {
 	}
 else {
 	iBox = 1;
-	nBoxes = gameData.models.hitboxes [objP->ModelId ()].nHitboxes;
+	nBoxes = gameData.modelData.hitboxes [pObj->ModelId ()].nHitboxes;
 	}
 ogl.SetDepthMode (GL_LEQUAL);
 ogl.SetBlending (true);
@@ -109,15 +110,15 @@ ogl.SetBlendMode (OGL_BLEND_ALPHA);
 ogl.SetTexturing (false);
 ogl.SetDepthWrite (false);
 
-tHitbox* hb = TransformHitboxes (objP, &objP->info.position.vPos);
+tHitbox* hb = TransformHitboxes (pObj, &pObj->info.position.vPos);
 
 for (; iBox <= nBoxes; iBox++) {
 #if 0
 	if (iBox)
-		transformation.Begin (pmhb [iBox].vOffset, CAngleVector::ZERO);
-	TransformHitboxf (objP, vertList, iBox);
+		transformation.Begin (pmhb [iBox].vOffset, CAngleVector::ZERO, __FILE__, __LINE__);
+	TransformHitboxf (pObj, vertList, iBox);
 #endif
-	if ((objP->info.nType == OBJ_PLAYER) && (iBox == nDbgBox))
+	if ((pObj->info.nType == OBJ_PLAYER) && (iBox == nDbgBox))
 		glColor4f (1.0f, 0, 0, alpha);
 	else
 		glColor4f (red, green, blue, alpha / 2);
@@ -131,14 +132,14 @@ for (; iBox <= nBoxes; iBox++) {
 		}
 	glEnd ();
 	glLineWidth (3);
-	if ((objP->info.nType == OBJ_PLAYER) && (iBox == nDbgBox))
+	if ((pObj->info.nType == OBJ_PLAYER) && (iBox == nDbgBox))
 		glColor4f (1.0f, 0, 0, alpha);
 	else
 		glColor4f (red, green, blue, alpha);
 	for (i = 0; i < 6; i++) {
 		CFixVector coord;
 		coord.SetZero ();
-		if ((objP->info.nType == OBJ_PLAYER) && (iBox == nDbgBox))
+		if ((pObj->info.nType == OBJ_PLAYER) && (iBox == nDbgBox))
 			glColor4f (1.0f, 0, 0, alpha);
 		else
 			glColor4f (red, green, blue, alpha);
@@ -165,16 +166,16 @@ for (; iBox <= nBoxes; iBox++) {
 	}
 float r = X2F (CFixVector::Dist (pmhb->vMin, pmhb->vMax) / 2);
 #if 0 //DBG //display collision point
-if (gameStates.app.nSDLTicks [0] - gameData.models.hitboxes [objP->ModelId ()].tHit < 500) {
+if (gameStates.app.nSDLTicks [0] - gameData.modelData.hitboxes [pObj->ModelId ()].tHit < 500) {
 	CObject	o;
 
-	o.info.position.vPos = gameData.models.hitboxes [objP->ModelId ()].vHit;
-	o.info.position.mOrient = objP->info.position.mOrient;
+	o.info.position.vPos = gameData.modelData.hitboxes [pObj->ModelId ()].vHit;
+	o.info.position.mOrient = pObj->info.position.mOrient;
 	o.SetSize (I2X (2));
-	int nModel = objP->rType.polyObjInfo.nModel;
-	objP->rType.polyObjInfo.nModel = -1;
-	objP->rType.polyObjInfo.nModel = nModel;
-	//SetRenderView (0, NULL);
+	int32_t nModel = pObj->rType.polyObjInfo.nModel;
+	pObj->rType.polyObjInfo.nModel = -1;
+	pObj->rType.polyObjInfo.nModel = nModel;
+	//SetupRenderView (0, NULL);
 	DrawShieldSphere (&o, 1, 0, 0, 0.33f, 1);
 	}
 #endif
@@ -186,9 +187,9 @@ ogl.SetDepthMode (GL_LESS);
 
 // -----------------------------------------------------------------------------
 
-void RenderPlayerShield (CObject *objP)
+void RenderPlayerShield (CObject *pObj)
 {
-	int			bStencil, dt = 0, i = objP->info.nId, nColor = 0;
+	int32_t		bStencil, dt = 0, i = pObj->info.nId, nColor = 0;
 	float			alpha, scale = 1;
 	tCloakInfo	ci;
 
@@ -199,55 +200,59 @@ if (!SHOW_OBJ_FX)
 if (SHOW_SHADOWS &&
 	 (FAST_SHADOWS ? (gameStates.render.nShadowPass != 1) : (gameStates.render.nShadowPass != 3)))
 	return;
-if (EGI_FLAG (bPlayerShield, 0, 1, 0)) {
-	if (gameData.multiplayer.players [i].flags & PLAYER_FLAGS_CLOAKED) {
-		if (!GetCloakInfo (objP, 0, 0, &ci))
+
+bool bAppearing = pObj->Appearing ();
+if (bAppearing || EGI_FLAG (nShieldEffect, 0, 1, gameOpts->render.effects.bShields)) {
+	if (PLAYER (i).flags & PLAYER_FLAGS_CLOAKED) {
+		if (!GetCloakInfo (pObj, 0, 0, &ci))
 			return;
 		scale = (float) ci.nFadeValue / (float) FADE_LEVELS;
 		scale *= scale;
 		}
 	bStencil = ogl.StencilOff ();
-	gameData.render.shield.SetPulse (gameData.multiplayer.spherePulse + i);
+	gameData.renderData.shield->SetupSurface (gameData.multiplayer.spherePulse + i, shield [0].Bitmap ());
 	if (gameData.multiplayer.bWasHit [i]) {
 		if (gameData.multiplayer.bWasHit [i] < 0) {
 			gameData.multiplayer.bWasHit [i] = 1;
 			gameData.multiplayer.nLastHitTime [i] = gameStates.app.nSDLTicks [0];
-			SetupSpherePulse (gameData.multiplayer.spherePulse + i, 0.1f, 0.5f);
+			gameData.multiplayer.spherePulse [i].Setup (0.1f, 0.5f);
 			dt = 0;
 			}
 		else if ((dt = gameStates.app.nSDLTicks [0] - gameData.multiplayer.nLastHitTime [i]) >= 300) {
 			gameData.multiplayer.bWasHit [i] = 0;
-			SetupSpherePulse (gameData.multiplayer.spherePulse + i, 0.02f, 0.4f);
+			gameData.multiplayer.spherePulse [i].Setup (0.02f, 0.4f);
 			}
 		}
 #if !RENDER_HITBOX
 #	if DBG == 0
-	if (gameOpts->render.effects.bOnlyShieldHits && !gameData.multiplayer.bWasHit [i])
+	if (!bAppearing && (gameOpts->render.effects.bOnlyShieldHits && !gameData.multiplayer.bWasHit [i]))
 		return;
 #	endif
 #endif
-	if (gameData.multiplayer.players [i].flags & PLAYER_FLAGS_INVULNERABLE)
+	if (bAppearing)
+		nColor = 1;
+	else if (PLAYER (i).flags & PLAYER_FLAGS_INVULNERABLE)
 		nColor = 2;
 	else if (gameData.multiplayer.bWasHit [i])
-		nColor = 1;
+		nColor = 0;
 	else
 		nColor = 0;
 	if (gameData.multiplayer.bWasHit [i]) {
-		alpha = (gameOpts->render.effects.bOnlyShieldHits ? (float) cos (sqrt ((double) dt / float (SHIELD_EFFECT_TIME)) * Pi / 2) : 1);
+		alpha = ((!bAppearing && gameOpts->render.effects.bOnlyShieldHits) ? (float) cos (sqrt ((double) dt / float (SHIELD_EFFECT_TIME)) * PI / 2) : 1);
 		scale *= alpha;
 		}
-	else if (gameData.multiplayer.players [i].flags & PLAYER_FLAGS_INVULNERABLE)
+	else if (PLAYER (i).flags & PLAYER_FLAGS_INVULNERABLE)
 		alpha = 1;
 	else {
-		alpha = X2F (gameData.multiplayer.players [i].Shield ()) / X2F (gameData.multiplayer.players [i].MaxShield ());
+		alpha = X2F (PLAYER (i).Shield ()) / X2F (PLAYER (i).MaxShield ());
 		scale *= alpha;
-		if (gameData.multiplayer.spherePulse [i].fSpeed == 0.0f)
-			SetupSpherePulse (gameData.multiplayer.spherePulse + i, 0.02f, 0.5f);
+		if (!gameData.multiplayer.spherePulse [i].Valid ())
+			gameData.multiplayer.spherePulse [i].Setup (0.02f, 0.5f);
 		}
 #if RENDER_HITBOX
-	RenderHitbox (objP, shieldColors [nColor].Red () * scale, shieldColors [nColor].Green () * scale, shieldColors [nColor].Blue () * scale, alpha);
+	RenderHitbox (pObj, shieldColors [nColor].Red () * scale, shieldColors [nColor].Green () * scale, shieldColors [nColor].Blue () * scale, alpha);
 #else
-	DrawShieldSphere (objP, shieldColors [nColor].Red () * scale, shieldColors [nColor].Green () * scale, shieldColors [nColor].Blue () * scale, alpha, 1);
+	DrawShieldSphere (pObj, shieldColors [nColor].Red () * scale, shieldColors [nColor].Green () * scale, shieldColors [nColor].Blue () * scale, alpha, 1);
 #endif
 	ogl.StencilOn (bStencil);
 	}
@@ -255,12 +260,13 @@ if (EGI_FLAG (bPlayerShield, 0, 1, 0)) {
 
 // -----------------------------------------------------------------------------
 
-void RenderRobotShield (CObject *objP)
+void RenderRobotShield (CObject *pObj)
 {
-	static CFloatVector shieldColors [3] = {{{{0.75f, 0, 0.75f, 1}}}, {{{0, 0.5f, 1}}},{{{1, 0.1f, 0.25f, 1}}}};
+	static CFloatVector shieldColors [3] = {{{{0.75f, 0, 0.75f, 1}}}, {{{0, 0.5f, 1}}}, {{{1, 0.1f, 0.25f, 1}}}};
+	static CPulseData shieldPulse;
 
 #if RENDER_HITBOX
-RenderHitbox (objP, 0.5f, 0.0f, 0.6f, 0.4f);
+RenderHitbox (pObj, 0.5f, 0.0f, 0.6f, 0.4f);
 #else
 #endif
 #if 1
@@ -268,24 +274,25 @@ RenderHitbox (objP, 0.5f, 0.0f, 0.6f, 0.4f);
 	tCloakInfo	ci;
 	fix			dt;
 
-if (!(gameOpts->render.effects.bEnabled && gameOpts->render.effects.bRobotShields))
+if (!(gameOpts->render.effects.bEnabled && gameOpts->render.effects.bShields > 1))
 	return;
-if ((objP->info.nType == OBJ_ROBOT) && objP->cType.aiInfo.CLOAKED) {
-	if (!GetCloakInfo (objP, 0, 0, &ci))
+if ((pObj->info.nType == OBJ_ROBOT) && pObj->cType.aiInfo.CLOAKED) {
+	if (!GetCloakInfo (pObj, 0, 0, &ci))
 		return;
 	scale = (float) ci.nFadeValue / (float) FADE_LEVELS;
 	scale *= scale;
 	}
-dt = gameStates.app.nSDLTicks [0] - objP->TimeLastHit ();
+gameData.renderData.shield->SetupSurface (&shieldPulse, shield [0].Bitmap ());
+dt = gameStates.app.nSDLTicks [0] - pObj->TimeLastHit ();
 if (dt < SHIELD_EFFECT_TIME) {
-	scale *= gameOpts->render.effects.bOnlyShieldHits ? float (cos (sqrt (float (dt) / float (SHIELD_EFFECT_TIME)) * Pi / 2)) : 1;
-	DrawShieldSphere (objP, shieldColors [2].Red () * scale, shieldColors [2].Green () * scale, shieldColors [2].Blue () * scale, 0.5f * scale, 1);
+	scale *= gameOpts->render.effects.bOnlyShieldHits ? float (cos (sqrt (float (dt) / float (SHIELD_EFFECT_TIME)) * PI / 2)) : 1;
+	DrawShieldSphere (pObj, shieldColors [2].Red () * scale, shieldColors [2].Green () * scale, shieldColors [2].Blue () * scale, 0.5f * scale, 1);
 	}
 else if (!gameOpts->render.effects.bOnlyShieldHits) {
-	if ((objP->info.nType != OBJ_ROBOT) || ROBOTINFO (objP->info.nId).companion)
-		DrawShieldSphere (objP, 0.0f, 0.5f * scale, 1.0f * scale, objP->Damage () / 2 * scale, 1);
+	if ((pObj->info.nType != OBJ_ROBOT) || pObj->IsGuideBot ())
+		DrawShieldSphere (pObj, 0.0f, 0.5f * scale, 1.0f * scale, pObj->Damage () / 2 * scale, 1);
 	else
-		DrawShieldSphere (objP, 0.75f * scale, 0.0f, 0.75f * scale, objP->Damage () / 2 * scale, 1);
+		DrawShieldSphere (pObj, 0.75f * scale, 0.0f, 0.75f * scale, pObj->Damage () / 2 * scale, 1);
 	}
 #endif
 }

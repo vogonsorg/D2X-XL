@@ -19,15 +19,13 @@
 #include <ggi/input/xwin.h>
 #endif
 
-int event_init();
-void event_poll(unsigned long mask);
+int32_t event_init();
+void event_poll(uint32_t mask);
 
 #ifdef GII_XWIN
 void init_gii_xwin(Display *disp,Window win);
 #endif
 
-#ifdef FAST_EVENTPOLL
-extern int bLegacyInput;
-#endif
+extern int32_t bLegacyInput;
 
 #endif

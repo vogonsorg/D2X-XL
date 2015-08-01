@@ -29,41 +29,41 @@
 
 //------------------------------------------------------------------------------
 
-void CLightManager::Transform (int bStatic, int bVariable)
+void CLightManager::Transform (int32_t bStatic, int32_t bVariable)
 {
-	int			i;
-	CDynLight*	lightP = &m_data.lights [0];
+	int32_t			i;
+	CDynLight*	pLight = &m_data.lights [0];
 
 m_data.nLights [1] = 0;
-for (i = 0; i < m_data.nLights [0]; i++, lightP++) {
+for (i = 0; i < m_data.nLights [0]; i++, pLight++) {
 #if DBG
-	if ((nDbgSeg >= 0) && (nDbgSeg == lightP->info.nSegment) && ((nDbgSide < 0) || (nDbgSide == lightP->info.nSide)))
-		nDbgSeg = nDbgSeg;
+	if ((nDbgSeg >= 0) && (nDbgSeg == pLight->info.nSegment) && ((nDbgSide < 0) || (nDbgSide == pLight->info.nSide)))
+		BRP;
 	if (i == nDbgLight)
 		nDbgLight = nDbgLight;
 #endif
-	lightP->render.vPosf [0].Assign (lightP->info.vPos);
+	pLight->render.vPosf [0].Assign (pLight->info.vPos);
 	if (ogl.m_states.bUseTransform)
-		lightP->render.vPosf [1] = lightP->render.vPosf [0];
+		pLight->render.vPosf [1] = pLight->render.vPosf [0];
 	else {
-		transformation.Transform (lightP->render.vPosf [1], lightP->render.vPosf [0], 0);
-		lightP->render.vPosf [1].v.coord.w = 1;
+		transformation.Transform (pLight->render.vPosf [1], pLight->render.vPosf [0], 0);
+		pLight->render.vPosf [1].v.coord.w = 1;
 		}
-	lightP->render.vPosf [0].v.coord.w = 1;
-	lightP->render.nType = lightP->info.nType;
-	lightP->render.bState = lightP->info.bState && (lightP->info.color.Red () + lightP->info.color.Green () + lightP->info.color.Blue () > 0.0);
-	lightP->render.bLightning = (lightP->info.nObject < 0) && (lightP->info.nSide < 0);
-	for (int j = 0; j < gameStates.app.nThreads; j++)
-		ResetUsed (lightP, j);
-	lightP->render.bShadow =
-	lightP->render.bExclusive = 0;
-	if (lightP->render.bState) {
-		if (!bStatic && (lightP->info.nType == 1) && !lightP->info.bVariable)
-			lightP->render.bState = 0;
-		if (!bVariable && ((lightP->info.nType > 1) || lightP->info.bVariable))
-			lightP->render.bState = 0;
+	pLight->render.vPosf [0].v.coord.w = 1;
+	pLight->render.nType = pLight->info.nType;
+	pLight->render.bState = pLight->info.bState && (pLight->info.color.Red () + pLight->info.color.Green () + pLight->info.color.Blue () > 0.0);
+	pLight->render.bLightning = (pLight->info.nObject < 0) && (pLight->info.nSide < 0);
+	for (int32_t j = 0; j < gameStates.app.nThreads; j++)
+		ResetUsed (pLight, j);
+	pLight->render.bShadow =
+	pLight->render.bExclusive = 0;
+	if (pLight->render.bState) {
+		if (!bStatic && (pLight->info.nType == 1) && !pLight->info.bVariable)
+			pLight->render.bState = 0;
+		if (!bVariable && ((pLight->info.nType > 1) || pLight->info.bVariable))
+			pLight->render.bState = 0;
 		}
-	m_data.renderLights [m_data.nLights [1]++] = lightP;
+	m_data.renderLights [m_data.nLights [1]++] = pLight;
 	}
 m_headlights.Prepare ();
 m_headlights.Update ();
@@ -74,23 +74,23 @@ m_headlights.Transform ();
 
 #if SORT_ACTIVE_LIGHTS
 
-static void QSortDynamicLights (int left, int right, int nThread)
+static void QSortDynamicLights (int32_t left, int32_t right, int32_t nThread)
 {
-	CDynLight**	activeLightsP = m_data.active [nThread];
-	int			l = left,
+	CDynLight**	pActiveLights = m_data.active [nThread];
+	int32_t			l = left,
 					r = right,
-					mat = activeLightsP [(l + r) / 2]->xDistance;
+					mat = pActiveLights [(l + r) / 2]->xDistance;
 
 do {
-	while (activeLightsP [l]->xDistance < mat)
+	while (pActiveLights [l]->xDistance < mat)
 		l++;
-	while (activeLightsP [r]->xDistance > mat)
+	while (pActiveLights [r]->xDistance > mat)
 		r--;
 	if (l <= r) {
 		if (l < r) {
-			CDynLight* h = activeLightsP [l];
-			activeLightsP [l] = activeLightsP [r];
-			activeLightsP [r] = h;
+			CDynLight* h = pActiveLights [l];
+			pActiveLights [l] = pActiveLights [r];
+			pActiveLights [r] = h;
 			}
 		l++;
 		r--;
@@ -109,137 +109,139 @@ if (left < r)
 // distance to the lit object. If a jump table entry is already occupied, the 
 // light will be moved back in the table to the next free entry.
 
-int CLightManager::SetActive (CActiveDynLight* activeLightsP, CDynLight* lightP, short nType, int nThread, bool bForce)
+int32_t CLightManager::SetActive (CActiveDynLight* pActiveLights, CDynLight* pLight, int16_t nType, int32_t nThread, bool bForce)
 {
+ENTER (0, nThread);
 #if DBG
-if ((nDbgSeg >= 0) && (lightP->info.nSegment == nDbgSeg) && ((nDbgSide < 0) || (lightP->info.nSide == nDbgSide)))
-	nDbgSeg = nDbgSeg;
-if ((nDbgObj >= 0) && (lightP->info.nObject == nDbgObj))
-	nDbgObj = nDbgObj;
+if ((nDbgSeg >= 0) && (pLight->info.nSegment == nDbgSeg) && ((nDbgSide < 0) || (pLight->info.nSide == nDbgSide)))
+	BRP;
+if ((nDbgObj >= 0) && (pLight->info.nObject == nDbgObj))
+	BRP;
 #endif
 
-if (lightP->render.bUsed [nThread])
-	return 0;
+if (pLight->render.bUsed [nThread])
+	RETVAL (0)
 fix xDist;
-if (bForce || lightP->info.bSpot) 
+if (bForce || pLight->info.bSpot) 
 	xDist = 0;
 else {
-	xDist = (lightP->render.xDistance [nThread] / 2000 + 5) / 10;
+	xDist = (pLight->render.xDistance [nThread] / 2000 + 5) / 10;
 	if (xDist >= MAX_OGL_LIGHTS)
-		return 0;
+	RETVAL (0)
 	if (xDist < 0)
 		xDist = 0;
 	}
 #if PREFER_GEOMETRY_LIGHTS
-else if (lightP->info.nSegment >= 0)
+else if (pLight->info.nSegment >= 0)
 	xDist /= 2;
-else if (!lightP->info.bSpot)
+else if (!pLight->info.bSpot)
 	xDist += (MAX_OGL_LIGHTS - xDist) / 2;
 #endif
-activeLightsP += xDist;
-while (activeLightsP->nType) {
-	if (activeLightsP->lightP == lightP)
-		return 0;
+pActiveLights += xDist;
+while (pActiveLights->nType) {
+	if (pActiveLights->pLight == pLight)
+		RETVAL (0)
 	if (++xDist >= MAX_OGL_LIGHTS)
-		return 0;
-	activeLightsP++;
+		RETVAL (0)
+	pActiveLights++;
 	}
 
 #if DBG
-if ((nDbgSeg >= 0) && (lightP->info.nSegment == nDbgSeg) && ((nDbgSide < 0) || (lightP->info.nSide == nDbgSide)))
-	nDbgSeg = nDbgSeg;
-if ((nDbgObj >= 0) && (lightP->info.nObject == nDbgObj))
-	nDbgObj = nDbgObj;
+if ((nDbgSeg >= 0) && (pLight->info.nSegment == nDbgSeg) && ((nDbgSide < 0) || (pLight->info.nSide == nDbgSide)))
+	BRP;
+if ((nDbgObj >= 0) && (pLight->info.nObject == nDbgObj))
+	BRP;
 #endif
 
-activeLightsP->nType = nType;
-activeLightsP->lightP = lightP;
-lightP->render.activeLightsP [nThread] = activeLightsP;
-lightP->render.bUsed [nThread] = ubyte (nType);
+pActiveLights->nType = nType;
+pActiveLights->pLight = pLight;
+pLight->render.pActiveLights [nThread] = pActiveLights;
+pLight->render.bUsed [nThread] = uint8_t (nType);
 
-CDynLightIndex* sliP = &m_data.index [0][nThread];
+CDynLightIndex* pLightIndex = &m_data.index [0][nThread];
 
-sliP->nActive++;
-if (sliP->nFirst > xDist)
-	sliP->nFirst = short (xDist);
-if (sliP->nLast < xDist)
-	sliP->nLast = short (xDist);
-return 1;
+pLightIndex->nActive++;
+if (pLightIndex->nFirst > xDist)
+	pLightIndex->nFirst = int16_t (xDist);
+if (pLightIndex->nLast < xDist)
+	pLightIndex->nLast = int16_t (xDist);
+RETVAL (1)
 }
 
 //------------------------------------------------------------------------------
 
-CDynLight* CLightManager::GetActive (CActiveDynLight* activeLightsP, int nThread)
+CDynLight* CLightManager::GetActive (CActiveDynLight* pActiveLights, int32_t nThread)
 {
-	CDynLight*	lightP = activeLightsP->lightP;
+	CDynLight*	pLight = pActiveLights->pLight;
 #if 0
-if (lightP) {
-	if (lightP->render.bUsed [nThread] > 1)
-		lightP->render.bUsed [nThread] = 0;
-	if (activeLightsP->nType > 1) {
-		activeLightsP->nType = 0;
-		activeLightsP->lightP = NULL;
+if (pLight) {
+	if (pLight->render.bUsed [nThread] > 1)
+		pLight->render.bUsed [nThread] = 0;
+	if (pActiveLights->nType > 1) {
+		pActiveLights->nType = 0;
+		pActiveLights->pLight = NULL;
 		m_data.index [0][nThread].nActive--;
 		}
 	}
 #endif
-if (lightP == reinterpret_cast<CDynLight*> (0xffffffff))
+if (pLight == reinterpret_cast<CDynLight*> (0xffffffff))
 	return NULL;
-return lightP;
+return pLight;
 }
 
 //------------------------------------------------------------------------------
 
-ubyte CLightManager::VariableVertexLights (int nVertex)
+uint8_t CLightManager::VariableVertexLights (int32_t nVertex)
 {
-	short*		nearestLightP = m_data.nearestVertLights + nVertex * MAX_NEAREST_LIGHTS;
-	CDynLight*	lightP;
-	short			i, j;
-	ubyte			h;
+	int16_t*		pNearestLight = m_data.nearestVertLights + nVertex * MAX_NEAREST_LIGHTS;
+	CDynLight*	pLight;
+	int16_t		i, j;
+	uint8_t		h;
 
 #if DBG
 if (nVertex == nDbgVertex)
-	nDbgVertex = nDbgVertex;
+	BRP;
 #endif
-for (h = 0, i = MAX_NEAREST_LIGHTS; i; i--, nearestLightP++) {
-	if ((j = *nearestLightP) < 0)
+for (h = 0, i = MAX_NEAREST_LIGHTS; i; i--, pNearestLight++) {
+	if ((j = *pNearestLight) < 0)
 		break;
-	if ((lightP = RenderLights (j)))
-		h += lightP->info.bVariable;
+	if ((pLight = RenderLights (j)))
+		h += pLight->info.bVariable;
 	}
 return h;
 }
 
 //------------------------------------------------------------------------------
 
-void CLightManager::SetNearestToVertex (int nSegment, int nSide, int nVertex, CFixVector *vNormal, ubyte nType, int bStatic, int bVariable, int nThread)
+void CLightManager::SetNearestToVertex (int32_t nSegment, int32_t nSide, int32_t nVertex, CFixVector *vNormal, uint8_t nType, int32_t bStatic, int32_t bVariable, int32_t nThread)
 {
+ENTER (0, nThread);
+
 if (bStatic || m_data.variableVertLights [nVertex]) {
-	PROF_START
-	short*				nearestLightP = m_data.nearestVertLights + nVertex * MAX_NEAREST_LIGHTS;
-	CDynLightIndex*	sliP = &m_data.index [0][nThread];
-	short					i, j, nActiveLightI = sliP->nActive;
-	CDynLight*			lightP;
-	CActiveDynLight*	activeLightsP = m_data.active [nThread].Buffer ();
-	CFixVector			vVertex = gameData.segs.vertices [nVertex];
+	int16_t				*pNearestLight = m_data.nearestVertLights + nVertex * MAX_NEAREST_LIGHTS;
+	CDynLightIndex		*pLightIndex = &m_data.index [0][nThread];
+	int16_t				i, j, nActiveLightI = pLightIndex->nActive;
+	CDynLight*			pLight;
+	CActiveDynLight	*pActiveLights = m_data.active [nThread].Buffer ();
+	CFixVector			vVertex = gameData.segData.vertices [nVertex];
 	fix					xMaxLightRange = /*(gameStates.render.bPerPixelLighting == 2) ? MAX_LIGHT_RANGE * 2 :*/ MAX_LIGHT_RANGE;
 
 #if DBG
 if (nVertex == nDbgVertex)
-	nDbgVertex = nDbgVertex;
+	BRP;
 #endif
-	sliP->iVertex = nActiveLightI;
-	for (i = MAX_NEAREST_LIGHTS; i; i--, nearestLightP++) {
-		if ((j = *nearestLightP) < 0)
+	pLightIndex->iVertex = nActiveLightI;
+	for (i = MAX_NEAREST_LIGHTS; i; i--, pNearestLight++) {
+		if ((j = *pNearestLight) < 0)
 			break;
-		if (!(lightP = RenderLights (j)))
+		if (!(pLight = RenderLights (j)))
 			continue;
-		if (lightP->render.bUsed [nThread])
+		if (pLight->render.bUsed [nThread])
 			continue;
-		if (gameData.threads.vertColor.data.bNoShadow && lightP->render.bShadow)
+		if (gameData.threadData.vertColor.data.bNoShadow && pLight->render.bShadow)
 			continue;
-		if (lightP->info.bVariable) {
-			if (!(bVariable && lightP->info.bOn))
+		if (pLight->info.bVariable) {
+			if (!(bVariable && pLight->info.bOn))
 				continue;
 			}
 		else {
@@ -247,108 +249,116 @@ if (nVertex == nDbgVertex)
 				continue;
 			}
 #if 1
-		if (!lightP->Contribute (nSegment, nSide, nVertex, vVertex, vNormal, xMaxLightRange, 1.0f, (lightP->info.nSegment >= 0) ? -SEGMENTS [lightP->info.nSegment].AvgRad () : 0, nThread))
+		CSegment *pLightSeg = SEGMENT (pLight->info.nSegment);
+		if (!pLight->Contribute (nSegment, nSide, nVertex, vVertex, vNormal, xMaxLightRange, 1.0f, pLightSeg ? -pLightSeg->AvgRad () : 0, nThread))
 			continue;
 #else
-		CFixVector vLightToVertex = vVertex - lightP->info.vPos;
+		CFixVector vLightToVertex = vVertex - pLight->info.vPos;
 		fix xLightDist = CFixVector::Normalize (vLightToVertex.Mag ());
-		if ((lightP->info.bDiffuse [nThread] = gameData.segs.LightVis (lightP->Index (), nSegment) && lightP->SeesPoint (vNormal, &vLightToVertex)) || (nSegment < 0))
-			lightP->render.xDistance [nThread] = fix (xLightDist / lightP->info.fRange);
+		if ((pLight->info.bDiffuse [nThread] = gameData.segData.LightVis (pLight->Index (), nSegment) && pLight->SeesPoint (vNormal, &vLightToVertex)) || (nSegment < 0))
+			pLight->render.xDistance [nThread] = fix (xLightDist / pLight->info.fRange);
 		else if (nSegment >= 0) {
-			lightP->render.xDistance [nThread] = lightP->LightPathLength (nSegment, vVertex);
-			if (lightP->render.xDistance [nThread] < 0)
+			pLight->render.xDistance [nThread] = pLight->LightPathLength (nSegment, vVertex);
+			if (pLight->render.xDistance [nThread] < 0)
 				continue;
 			}
-		if (lightP->info.nSegment >= 0)
-			lightP->render.xDistance [nThread] -= SEGMENTS [lightP->info.nSegment].AvgRad ();
-		if (lightP->render.xDistance [nThread] > xMaxLightRange)
+		if (pLight->info.nSegment >= 0)
+			pLight->render.xDistance [nThread] -= SEGMENT (pLight->info.nSegment)->AvgRad ();
+		if (pLight->render.xDistance [nThread] > xMaxLightRange)
 			continue;
 #endif
-		if (SetActive (activeLightsP, lightP, 2, nThread)) {
-			lightP->render.nType = nType;
-			//lightP->render.bState = 1;
+		if (SetActive (pActiveLights, pLight, 2, nThread)) {
+			pLight->render.nType = nType;
+			//pLight->render.bState = 1;
 			}
 		}
-	PROF_END(ptVertexLighting)
 	}
+RETURN
 }
 
 //------------------------------------------------------------------------------
 
-int CLightManager::SetNearestToFace (CSegFace* faceP, int bTextured)
+int32_t CLightManager::SetNearestToFace (CSegFace* pFace, int32_t bTextured)
 {
+ENTER (0, 0);
+
 PROF_START
 #if 0
-	static		int nFrameCount = -1;
-if ((faceP == prevFaceP) && (nFrameCount == gameData.app.nFrameCount))
-	return m_data.index [0][0].nActive;
+	static		int32_t nFrameCount = -1;
+if ((pFace == prevFaceP) && (nFrameCount == gameData.appData.nFrameCount))
+	RETVAL (m_data.index [0][0].nActive);
 
-prevFaceP = faceP;
-nFrameCount = gameData.app.nFrameCount;
+prevFaceP = pFace;
+nFrameCount = gameData.appData.nFrameCount;
 #endif
-	int			i;
+	int32_t		i;
 	CFixVector	vNormal;
-	CSide*		sideP = SEGMENTS [faceP->m_info.nSegment].m_sides + faceP->m_info.nSide;
+	CSide*		pSide = SEGMENT (pFace->m_info.nSegment)->m_sides + pFace->m_info.nSide;
 
 #if DBG
-if ((faceP->m_info.nSegment == nDbgSeg) && ((nDbgSide < 0) || (faceP->m_info.nSide == nDbgSide)))
-	nDbgSeg = nDbgSeg;
-if (faceP - FACES.faces == nDbgFace)
-	nDbgFace = nDbgFace;
+if ((pFace->m_info.nSegment == nDbgSeg) && ((nDbgSide < 0) || (pFace->m_info.nSide == nDbgSide)))
+	BRP;
+if (pFace - FACES.faces == nDbgFace)
+	BRP;
 #endif
 #if 1//!DBG
 if (m_data.index [0][0].nActive < 0)
-	lightManager.SetNearestToSegment (faceP->m_info.nSegment, faceP - FACES.faces, 0, 0, 0);	//only get light emitting objects here (variable geometry lights are caught in lightManager.SetNearestToVertex ())
+	lightManager.SetNearestToSegment (pFace->m_info.nSegment, pFace - FACES.faces, 0, 0, 0);	//only get light emitting objects here (variable geometry lights are caught in lightManager.SetNearestToVertex ())
 else {
 	m_data.index [0][0] = m_data.index [1][0];
 	}
 #else
-lightManager.SetNearestToSegment (faceP->m_info.nSegment, faceP - FACES, 0, 0, 0);	//only get light emitting objects here (variable geometry lights are caught in lightManager.SetNearestToVertex ())
+lightManager.SetNearestToSegment (pFace->m_info.nSegment, pFace - FACES, 0, 0, 0);	//only get light emitting objects here (variable geometry lights are caught in lightManager.SetNearestToVertex ())
 #endif
-vNormal = sideP->m_normals [2];
+vNormal = pSide->m_normals [2];
 #if 1
 for (i = 0; i < 4; i++)
-	lightManager.SetNearestToVertex (-1, -1, faceP->m_info.index [i], &vNormal, 0, 0, 1, 0);
+	lightManager.SetNearestToVertex (-1, -1, pFace->m_info.index [i], &vNormal, 0, 0, 1, 0);
 #endif
 PROF_END(ptPerPixelLighting)
-return m_data.index [0][0].nActive;
+RETVAL (m_data.index [0][0].nActive);
 }
 
 //------------------------------------------------------------------------------
 
-void CLightManager::SetNearestStatic (int nSegment, int bStatic, int nThread)
+void CLightManager::SetNearestStatic (int32_t nSegment, int32_t bStatic, int32_t nThread)
 {
+ENTER (0, nThread);
 if (gameStates.render.nLightingMethod) {
-	short*				nearestLightP = m_data.nearestSegLights + nSegment * MAX_NEAREST_LIGHTS;
-	short					i, j;
-	CDynLight*			lightP;
-	CActiveDynLight*	activeLightsP = m_data.active [nThread].Buffer ();
-	fix					xMaxLightRange = SEGMENTS [nSegment].AvgRad () + (/*(gameStates.render.bPerPixelLighting == 2) ? MAX_LIGHT_RANGE * 2 :*/ MAX_LIGHT_RANGE);
-	CFixVector			c = SEGMENTS [nSegment].Center ();
+	CSegment				*pSeg = SEGMENT (nSegment);
+	if (!pSeg)
+		RETURN
+	int16_t				*pNearestLight = m_data.nearestSegLights + nSegment * MAX_NEAREST_LIGHTS;
+	int16_t				i, j;
+	CDynLight*			pLight;
+	CActiveDynLight	*pActiveLights = m_data.active [nThread].Buffer ();
+	fix					xMaxLightRange = pSeg->AvgRad () + (/*(gameStates.render.bPerPixelLighting == 2) ? MAX_LIGHT_RANGE * 2 :*/ MAX_LIGHT_RANGE);
+	CFixVector			c = pSeg->Center ();
 
 	//m_data.iStaticLights [nThread] = m_data.index [0][nThread].nActive;
-	for (i = MAX_NEAREST_LIGHTS; i; i--, nearestLightP++) {
-		if ((j = *nearestLightP) < 0)
+	for (i = MAX_NEAREST_LIGHTS; i; i--, pNearestLight++) {
+		if ((j = *pNearestLight) < 0)
 			break;
-		if (!(lightP = RenderLights (j)))
+		if (!(pLight = RenderLights (j)))
 			continue;
-		if (gameData.threads.vertColor.data.bNoShadow && lightP->render.bShadow)
+		if (gameData.threadData.vertColor.data.bNoShadow && pLight->render.bShadow)
 			continue;
-		if (lightP->info.bVariable) {
-			if (!lightP->info.bOn)
+		if (pLight->info.bVariable) {
+			if (!pLight->info.bOn)
 				continue;
 			}
 		else {
 			if (!bStatic)
 				continue;
 			}
-		lightP->render.xDistance [nThread] = (fix) ((CFixVector::Dist (c, lightP->info.vPos) /*- F2X (lightP->info.fRad)*/) / (lightP->info.fRange * max (lightP->info.fRad, 1.0f)));
-		if (lightP->render.xDistance [nThread] > xMaxLightRange)
+		pLight->render.xDistance [nThread] = (fix) ((CFixVector::Dist (c, pLight->info.vPos) /*- F2X (pLight->info.fRad)*/) / (pLight->info.fRange * Max (pLight->info.fRad, 1.0f)));
+		if (pLight->render.xDistance [nThread] > xMaxLightRange)
 			continue;
-		lightP->info.bDiffuse [nThread] = 1;
-		SetActive (activeLightsP, lightP, 3, nThread);
+		pLight->info.bDiffuse [nThread] = 1;
+		SetActive (pActiveLights, pLight, 3, nThread);
 		}
 	}
+RETURN
 }
 
 //------------------------------------------------------------------------------
@@ -356,239 +366,249 @@ if (gameStates.render.nLightingMethod) {
 // If bVariable == 0, only retrieve light emitting objects (will be stored in light buffer
 // after all geometry lights).
 
-short CLightManager::SetNearestToSegment (int nSegment, int nFace, int bVariable, int nType, int nThread)
+int16_t CLightManager::SetNearestToSegment (int32_t nSegment, int32_t nFace, int32_t bVariable, int32_t nType, int32_t nThread)
 {
-PROF_START
-	CDynLightIndex*	sliP = &m_data.index [0][nThread];
+ENTER (0, nThread);
+
+	CDynLightIndex*	pLightIndex = &m_data.index [0][nThread];
 
 #if DBG
-	static int nPrevSeg = -1;
+	static int32_t nPrevSeg = -1;
 
 if ((nDbgSeg >= 0) && (nSegment == nDbgSeg))
-	nDbgSeg = nDbgSeg;
+	BRP;
 #endif
 if (gameStates.render.nLightingMethod) {
-	ubyte						nType;
-	short						i = m_data.nLights [1];
-	int						bSkipHeadlight = !gameStates.render.nState && ((gameStates.render.bPerPixelLighting == 2) || gameOpts->ogl.bHeadlight);
-	fix						xMaxLightRange = SEGMENTS [nSegment].AvgRad () + (/*(gameStates.render.bPerPixelLighting == 2) ? MAX_LIGHT_RANGE * 2 :*/ MAX_LIGHT_RANGE);
-	CDynLight*				lightP;
-	CFixVector&				vDestPos = SEGMENTS [nSegment].Center ();
-	CActiveDynLight*		activeLightsP = m_data.active [nThread].Buffer ();
+	uint8_t					nType;
+	int16_t					i = m_data.nLights [1];
+	int32_t					bSkipHeadlight = (gameStates.render.nType != RENDER_TYPE_OBJECTS) && ((gameStates.render.bPerPixelLighting == 2) || gameOpts->ogl.bHeadlight);
+	fix						xMaxLightRange = SEGMENT (nSegment)->AvgRad () + (/*(gameStates.render.bPerPixelLighting == 2) ? MAX_LIGHT_RANGE * 2 :*/ MAX_LIGHT_RANGE);
+	CDynLight*				pLight;
+	CFixVector&				vDestPos = SEGMENT (nSegment)->Center ();
+	CActiveDynLight*		pActiveLights = m_data.active [nThread].Buffer ();
 
 	lightManager.ResetAllUsed (0, nThread);
 	lightManager.ResetActive (nThread, 0);
 	while (i) {
-		if (!(lightP = RenderLights (--i)))
+		if (!(pLight = RenderLights (--i)))
 			continue;
 #if DBG
-		if ((nDbgSeg >= 0) && (lightP->info.nSegment == nDbgSeg))
-			lightP = lightP;
+		if ((nDbgSeg >= 0) && (pLight->info.nSegment == nDbgSeg))
+			BRP;
 #endif
-		if (gameData.threads.vertColor.data.bNoShadow && lightP->render.bShadow)
+		if (gameData.threadData.vertColor.data.bNoShadow && pLight->render.bShadow)
 			continue;
 #if DBG
-		if ((nDbgSeg >= 0) && (lightP->info.nSegment == nDbgSeg))
-			lightP = lightP;
-		if ((lightP->info.nSegment >= 0) && (lightP->info.nSide < 0))
-			lightP = lightP;
+		if ((nDbgSeg >= 0) && (pLight->info.nSegment == nDbgSeg))
+			BRP;
+		if ((pLight->info.nSegment >= 0) && (pLight->info.nSide < 0))
+			BRP;
 #endif
-		nType = lightP->info.nType;
-		lightP->info.bDiffuse [nThread] = 1;
+		nType = pLight->info.nType;
+		pLight->info.bDiffuse [nThread] = 1;
 		if (nType == 3) {
 			if (bSkipHeadlight)
 				continue;
 			}
 		else {
-			if (lightP->info.bPowerup > gameData.render.nPowerupFilter)
+			if (pLight->info.bPowerup > gameData.renderData.nPowerupFilter)
 				continue;
 			if (nType < 2) {	// all light emitting objects scanned
 				if (!bVariable)
 					break;
-				if (!(lightP->info.bVariable && lightP->info.bOn))
+				if (!(pLight->info.bVariable && pLight->info.bOn))
 					continue;
 				}
 #if DBG
-			if (lightP->info.nObject >= 0)
-				nDbgObj = nDbgObj;
+			if (pLight->info.nObject >= 0)
+				BRP;
 #endif
 			}
 #if 1
-		if (!lightP->Contribute (nSegment, -1, -1, vDestPos, NULL, xMaxLightRange, max (lightP->info.fRad, 1.0f), 0, nThread))
+		if (!pLight->Contribute (nSegment, -1, -1, vDestPos, NULL, xMaxLightRange, Max (pLight->info.fRad, 1.0f), 0, nThread))
 			continue;
 #else
-		short nLightSeg = lightP->info.nSegment;
+		int16_t nLightSeg = pLight->info.nSegment;
 		if (nLightSeg >= 0) 
-			lightP->info.bDiffuse [nThread] = (lightP->info.nSide >= 0) 
-													 ? gameData.segs.LightVis (lightP->Index (), nSegment) 
-													 : gameData.segs.SegVis (lightP->info.nSegment, nSegment);
-		else if ((lightP->info.nObject >= 0) && ((lightP->info.nSegment = OBJECTS [lightP->info.nObject].info.nSegment) >= 0))
-			lightP->info.bDiffuse [nThread] = gameData.segs.SegVis (lightP->info.nSegment, nSegment);
+			pLight->info.bDiffuse [nThread] = (pLight->info.nSide >= 0) 
+														 ? gameData.segData.LightVis (pLight->Index (), nSegment) 
+														 : gameData.segData.SegVis (pLight->info.nSegment, nSegment);
+		else if ((pLight->info.nObject >= 0) && ((pLight->info.nSegment = OBJECT (pLight->info.nObject)->info.nSegment) >= 0))
+			pLight->info.bDiffuse [nThread] = gameData.segData.SegVis (pLight->info.nSegment, nSegment);
 		else
 			continue;
-		lightP->render.xDistance [nThread] = (fix) ((float) CFixVector::Dist (vDestPos, lightP->info.vPos) / (lightP->info.fRange * max (lightP->info.fRad, 1.0f)));
-		if (lightP->render.xDistance [nThread] > xMaxLightRange)
+		pLight->render.xDistance [nThread] = (fix) ((float) CFixVector::Dist (vDestPos, pLight->info.vPos) / (pLight->info.fRange * Max (pLight->info.fRad, 1.0f)));
+		if (pLight->render.xDistance [nThread] > xMaxLightRange)
 			continue;
-		if (lightP->info.bDiffuse [nThread])
-			lightP->info.bDiffuse [nThread] = lightP->SeesPoint (&vDestPos, NULL);
-		if (!lightP->info.bDiffuse [nThread]) {
-			lightP->render.xDistance [nThread] = lightP->LightPathLength (nSegment, vDestPos);
-			if (lightP->render.xDistance [nThread] > xMaxLightRange)
+		if (pLight->info.bDiffuse [nThread])
+			pLight->info.bDiffuse [nThread] = pLight->SeesPoint (&vDestPos, NULL);
+		if (!pLight->info.bDiffuse [nThread]) {
+			pLight->render.xDistance [nThread] = pLight->LightPathLength (nSegment, vDestPos);
+			if (pLight->render.xDistance [nThread] > xMaxLightRange)
 				continue;
 			}
 #endif
 #if DBG
-		if (SetActive (activeLightsP, lightP, 1, nThread)) {
-			if ((nSegment == nDbgSeg) && (nDbgObj >= 0) && (lightP->info.nObject == nDbgObj))
-				lightP = lightP;
+		if (SetActive (pActiveLights, pLight, 1, nThread)) {
+			if ((nSegment == nDbgSeg) && (nDbgObj >= 0) && (pLight->info.nObject == nDbgObj))
+				BRP;
 			if (nFace < 0)
-				lightP->render.nTarget = -nSegment - 1;
+				pLight->render.nTarget = -nSegment - 1;
 			else
-				lightP->render.nTarget = nFace + 1;
-			lightP->render.nFrame = gameData.app.nFrameCount;
+				pLight->render.nTarget = nFace + 1;
+			pLight->render.nFrame = gameData.appData.nFrameCount;
 			}
 #else
-		SetActive (activeLightsP, lightP, 1, nThread);
+		SetActive (pActiveLights, pLight, 1, nThread);
 #endif
 		}
-	m_data.index [1][nThread] = *sliP;
+	m_data.index [1][nThread] = *pLightIndex;
 #if DBG
 	if ((nDbgSeg >= 0) && (nSegment == nDbgSeg))
-		nDbgSeg = nDbgSeg;
+		BRP;
 #endif
 	}
 #if DBG
 nPrevSeg = nSegment;
 #endif
-PROF_END(ptSegmentLighting)
-return sliP->nActive;
+RETVAL (pLightIndex->nActive);
 }
 
 //------------------------------------------------------------------------------
 
-short CLightManager::SetNearestToPixel (short nSegment, short nSide, CFixVector *vNormal, CFixVector *vPixelPos, float fLightRad, int nThread)
+int16_t CLightManager::SetNearestToPixel (int16_t nSegment, int8_t nSide, CFixVector *vNormal, CFixVector *vPixelPos, float fLightRad, int32_t nThread)
 {
+ENTER (0, nThread);
 #if DBG
 if ((nDbgSeg >= 0) && (nSegment == nDbgSeg))
-	nDbgSeg = nDbgSeg;
+	BRP;
 #endif
 if (gameStates.render.nLightingMethod) {
-	short						i, n = m_data.nLights [1];
+	CSegment					*pSeg = SEGMENT (nSegment);
+	if (!pSeg) {
+		PrintLog (0, "Error: Invalid segment in \n");
+		RETVAL (0)
+		}
+	int16_t					i, n = m_data.nLights [1];
 	fix						xMaxLightRange = F2X (fLightRad) + (/*(gameStates.render.bPerPixelLighting == 2) ? MAX_LIGHT_RANGE * 2 :*/ MAX_LIGHT_RANGE);
-	CDynLight*				lightP;
-	CActiveDynLight*		activeLightsP = m_data.active [nThread].Buffer ();
+	CDynLight*				pLight;
+	CActiveDynLight		*pActiveLights = m_data.active [nThread].Buffer ();
 	bool						bForce, bLight = Find (nSegment, nSide, -1) >= 0;
 
 	ResetActive (nThread, 0);
 	ResetAllUsed (0, nThread);
 	for (i = 0; i < n; i++) {
-		if (!(lightP = RenderLights (i)))
+		if (!(pLight = RenderLights (i)))
 			continue;
 #if DBG
-		if ((nDbgSeg >= 0) && (lightP->info.nSegment == nDbgSeg))
-			lightP = lightP;
+		if ((nDbgSeg >= 0) && (pLight->info.nSegment == nDbgSeg))
+			BRP;
 #endif
-		if (lightP->info.nType)
+		if (pLight->info.nType)
 			break;
-		if (lightP->info.bVariable)
+		if (pLight->info.bVariable)
 			continue;
-		if (bLight && !lightP->Illuminate (nSegment, nSide))
+		if (bLight && !pLight->Illuminate (nSegment, nSide))
 			continue;
 #if DBG
-		if ((nDbgSeg >= 0) && (nDbgSeg == lightP->info.nSegment))
-			nDbgSeg = nDbgSeg;
+		if ((nDbgSeg >= 0) && (nDbgSeg == pLight->info.nSegment))
+			BRP;
 		if ((nDbgSeg >= 0) && (nDbgSeg == nSegment))
-			nDbgSeg = nDbgSeg;
+			BRP;
 #endif
-		if (lightP->info.nSegment < 0)
+		if (pLight->info.nSegment < 0)
 			continue;
-		if ((bForce = (lightP->info.nSegment == nSegment) && (lightP->info.nSide == nSide)))
-			lightP->info.bDiffuse [nThread] = 1;
+		if ((bForce = (pLight->info.nSegment == nSegment) && (pLight->info.nSide == nSide)))
+			pLight->info.bDiffuse [nThread] = 1;
 #if 1
-		else if (!lightP->Contribute (nSegment, nSide, -1, *vPixelPos, &SEGMENTS [nSegment].Normal (nSide, 2), xMaxLightRange, 1.0f, 0, nThread))
+		else if (!pLight->Contribute (nSegment, nSide, -1, *vPixelPos, &pSeg->Normal (nSide, 2), xMaxLightRange, 1.0f, 0, nThread))
 			continue;
 #else
 		else {
-			lightP->info.bDiffuse [nThread] = gameData.segs.LightVis (lightP->Index (), nSegment);
-			CFixVector vLightToPixel = *vPixelPos - lightP->info.vPos;
+			pLight->info.bDiffuse [nThread] = gameData.segData.LightVis (pLight->Index (), nSegment);
+			CFixVector vLightToPixel = *vPixelPos - pLight->info.vPos;
 			fix xLightDist = CFixVector::Normalize (vLightToPixel);
-			lightP->render.xDistance [nThread] = (fix) (float (xLightDist) / lightP->info.fRange);
-			if (lightP->render.xDistance [nThread] > xMaxLightRange)
+			pLight->render.xDistance [nThread] = (fix) (float (xLightDist) / pLight->info.fRange);
+			if (pLight->render.xDistance [nThread] > xMaxLightRange)
 				continue;
-			if (lightP->info.bDiffuse [nThread]) {
+			if (pLight->info.bDiffuse [nThread]) {
 				vLightToPixel /= xLightDist;
-				lightP->info.bDiffuse [nThread] = lightP->SeesPoint (nSegment, nSide, &vLightToPixel);
+				pLight->info.bDiffuse [nThread] = pLight->SeesPoint (nSegment, nSide, &vLightToPixel);
 				}
-			if (!lightP->info.bDiffuse [nThread]) {
-				lightP->render.xDistance [nThread] = lightP->LightPathLength (lightP->info.nSegment, nSegment, *vPixelPos, xMaxLightRange, 1, nThread);
-				if ((lightP->render.xDistance [nThread] < 0) || (lightP->render.xDistance [nThread] > xMaxLightRange))
+			if (!pLight->info.bDiffuse [nThread]) {
+				pLight->render.xDistance [nThread] = pLight->LightPathLength (pLight->info.nSegment, nSegment, *vPixelPos, xMaxLightRange, 1, nThread);
+				if ((pLight->render.xDistance [nThread] < 0) || (pLight->render.xDistance [nThread] > xMaxLightRange))
 					continue;
 				}
 			}
 #endif
 #if DBG
-		if (lightP->info.bDiffuse [nThread]) {
-			nDbgSeg = nDbgSeg;
+		if (pLight->info.bDiffuse [nThread]) {
+			BRP;
 			if ((nSegment == nDbgSeg) && ((nDbgSide < 0) || (nSide == nDbgSide)))
-				nDbgSeg = nDbgSeg;
+				BRP;
 			}
 #endif
-		SetActive (activeLightsP, lightP, 1, nThread, bForce);
+		SetActive (pActiveLights, pLight, 1, nThread, bForce);
 		}
 	}
-return m_data.index [0][nThread].nActive;
+RETVAL (m_data.index [0][nThread].nActive);
 }
 
 //------------------------------------------------------------------------------
 
-int CLightManager::SetNearestToSgmAvg (short nSegment, int nThread)
+int32_t CLightManager::SetNearestToSgmAvg (int16_t nSegment, int32_t nThread)
 {
-	int			i;
-	CSegment		*segP = SEGMENTS + nSegment;
+ENTER (0, nThread);
+
+	CSegment		*pSeg = SEGMENT (nSegment);
 
 #if DBG
 if (nSegment == nDbgSeg)
-	nDbgSeg = nDbgSeg;
+	BRP;
 #endif
+if (!pSeg)
+	RETVAL (0)
 lightManager.SetNearestToSegment (nSegment, -1, 0, 0, nThread);	//only get light emitting objects here (variable geometry lights are caught in lightManager.SetNearestToVertex ())
 #if 1
-for (i = 0; i < 8; i++)
-	if (segP->m_vertices [i] != 0xFFFF)
-		lightManager.SetNearestToVertex (-1, -1, segP->m_vertices [i], NULL, 0, 1, 1, 0);
+for (int32_t i = 0; i < 8; i++) {
+	if (pSeg->m_vertices [i] != 0xFFFF)
+		lightManager.SetNearestToVertex (-1, -1, pSeg->m_vertices [i], NULL, 0, 1, 1, 0);
+	}
 #endif
-return m_data.index [0][0].nActive;
+RETVAL (m_data.index [0][0].nActive);
 }
 
 //------------------------------------------------------------------------------
 
-CFaceColor* CLightManager::AvgSgmColor (int nSegment, CFixVector *vPosP, int nThread)
+CFaceColor* CLightManager::AvgSgmColor (int32_t nSegment, CFixVector *vPosP, int32_t nThread)
 {
-	CFaceColor	c, *vertColorP, *segColorP = gameData.render.color.segments + nSegment;
-	ushort		*pv;
-	int			i;
+	CFaceColor	c, *pVertexColor, *pSegColor = gameData.renderData.color.segments + nSegment;
+	uint16_t		*pv;
+	int32_t		i;
 	CFixVector	vCenter, vVertex;
 	float			d, ds;
 
 #if DBG
 if (nSegment == nDbgSeg)
-	nSegment = nSegment;
+	BRP;
 #endif
-if (!vPosP && (segColorP->index == (char) (gameData.app.nFrameCount & 0xff)) && (segColorP->Red () + segColorP->Green () + segColorP->Blue () != 0))
-	return segColorP;
+if (!vPosP && (pSegColor->index == (char) (gameData.appData.nFrameCount & 0xff)) && (pSegColor->Red () + pSegColor->Green () + pSegColor->Blue () != 0))
+	return pSegColor;
 #if DBG
 if (nSegment == nDbgSeg)
-	nSegment = nSegment;
+	BRP;
 #endif
 nThread = ThreadId (nThread);
-if (SEGMENTS [nSegment].m_function == SEGMENT_FUNC_SKYBOX) {
-	segColorP->Red () = segColorP->Green () = segColorP->Blue () = segColorP->Alpha () = 1.0f;
-	segColorP->index = 1;
+if (SEGMENT (nSegment)->m_function == SEGMENT_FUNC_SKYBOX) {
+	pSegColor->Red () = pSegColor->Green () = pSegColor->Blue () = pSegColor->Alpha () = 1.0f;
+	pSegColor->index = 1;
 	}
 else if (gameStates.render.bPerPixelLighting) {
-	segColorP->Red () =
-	segColorP->Green () =
-	segColorP->Blue () = 0;
-	segColorP->Alpha () = 1.0f;
+	pSegColor->Red () =
+	pSegColor->Green () =
+	pSegColor->Blue () = 0;
+	pSegColor->Alpha () = 1.0f;
 	if (SetNearestToSgmAvg (nSegment, nThread)) {
 			CVertColorData	vcd;
 
@@ -597,140 +617,140 @@ else if (gameStates.render.bPerPixelLighting) {
 		if (vPosP)
 			vcd.vertPos.Assign (*vPosP);
 		else {
-			vCenter = SEGMENTS [nSegment].Center ();
+			vCenter = SEGMENT (nSegment)->Center ();
 			vcd.vertPos.Assign (vCenter);
 			}
-		vcd.vertPosP = &vcd.vertPos;
+		vcd.pVertPos = &vcd.vertPos;
 		vcd.fMatShininess = 4;
-		ComputeVertexColor (nSegment, -1, -1, reinterpret_cast<CFloatVector3*> (segColorP), &vcd, 0);
+		ComputeVertexColor (nSegment, -1, -1, reinterpret_cast<CFloatVector3*> (pSegColor), &vcd, 0);
 		}
 #if DBG
-	if (segColorP->Red () + segColorP->Green () + segColorP->Blue () == 0)
-		segColorP = segColorP;
+	if (pSegColor->Red () + pSegColor->Green () + pSegColor->Blue () == 0)
+		BRP;
 #endif
 	lightManager.ResetAllUsed (0, nThread);
 	m_data.index [0][0].nActive = -1;
 	}
 else {
 	if (vPosP) {
-		vCenter = SEGMENTS [nSegment].Center ();
+		vCenter = SEGMENT (nSegment)->Center ();
 		//transformation.Transform (&vCenter, &vCenter);
 		ds = 0.0f;
 		}
 	else
 		ds = 1.0f;
-	pv = SEGMENTS [nSegment].m_vertices;
+	pv = SEGMENT (nSegment)->m_vertices;
 	c.Set (0.0f, 0.0f, 0.0f, 1.0f);
 	c.index = 0;
 	for (i = 0; i < 8; i++, pv++) {
 		if (*pv == 0xFFFF)
 			continue;
-		vertColorP = gameData.render.color.vertices + *pv;
+		pVertexColor = gameData.renderData.color.vertices + *pv;
 		if (vPosP) {
-			vVertex = gameData.segs.vertices [*pv];
+			vVertex = gameData.segData.vertices [*pv];
 			//transformation.Transform (&vVertex, &vVertex);
 			d = 2.0f - X2F (CFixVector::Dist(vVertex, *vPosP)) / X2F (CFixVector::Dist(vCenter, vVertex));
-			c += *vertColorP * d;
+			c += *pVertexColor * d;
 			ds += d;
 			}
 		else {
-			c += *vertColorP;
+			c += *pVertexColor;
 			}
 		}
 #if DBG
 	if (nSegment == nDbgSeg)
-		nSegment = nSegment;
+		BRP;
 #endif
 	c *= 0.125f; // => / 8.0f
-	segColorP->Assign (c);
+	pSegColor->Assign (c);
 	}
-segColorP->index = (char) (gameData.app.nFrameCount & 0xff);
-return segColorP;
+pSegColor->index = (char) (gameData.appData.nFrameCount & 0xff);
+return pSegColor;
 }
 
 //------------------------------------------------------------------------------
 
 void CLightManager::ResetSegmentLights (void)
 {
-for (short i = 0; i < gameData.segs.nSegments; i++)
-	gameData.render.color.segments [i].index = -1;
+for (int16_t i = 0; i < gameData.segData.nSegments; i++)
+	gameData.renderData.color.segments [i].index = -1;
 }
 
 //------------------------------------------------------------------------------
 
-void CLightManager::ResetNearestStatic (int nSegment, int nThread)
+void CLightManager::ResetNearestStatic (int32_t nSegment, int32_t nThread)
 {
 if (gameStates.render.nLightingMethod) {
-	short*		nearestLightP = m_data.nearestSegLights + nSegment * MAX_NEAREST_LIGHTS;
-	short			i, j;
-	CDynLight*	lightP;
+	int16_t*		pNearestLight = m_data.nearestSegLights + nSegment * MAX_NEAREST_LIGHTS;
+	int16_t			i, j;
+	CDynLight*	pLight;
 
-	for (i = MAX_NEAREST_LIGHTS /*gameStates.render.nMaxLightsPerFace*/; i; i--, nearestLightP++) {
-		if ((j = *nearestLightP) < 0)
+	for (i = MAX_NEAREST_LIGHTS /*gameStates.render.nMaxLightsPerFace*/; i; i--, pNearestLight++) {
+		if ((j = *pNearestLight) < 0)
 			break;
-		if ((lightP = RenderLights (j)) && (lightP->render.bUsed [nThread] == 3))
-			ResetUsed (lightP, nThread);
+		if ((pLight = RenderLights (j)) && (pLight->render.bUsed [nThread] == 3))
+			ResetUsed (pLight, nThread);
 		}
 	}
 }
 
 //------------------------------------------------------------------------------
 
-void CLightManager::ResetNearestToVertex (int nVertex, int nThread)
+void CLightManager::ResetNearestToVertex (int32_t nVertex, int32_t nThread)
 {
 //if (gameStates.render.nLightingMethod)
  {
-	short*		nearestLightP = m_data.nearestVertLights + nVertex * MAX_NEAREST_LIGHTS;
-	short			i, j;
-	CDynLight*	lightP;
+	int16_t*		pNearestLight = m_data.nearestVertLights + nVertex * MAX_NEAREST_LIGHTS;
+	int16_t			i, j;
+	CDynLight*	pLight;
 
 #if DBG
 	if (nVertex == nDbgVertex)
-		nDbgVertex = nDbgVertex;
+		BRP;
 #endif
-	for (i = MAX_NEAREST_LIGHTS; i; i--, nearestLightP++) {
-		if ((j = *nearestLightP) < 0)
+	for (i = MAX_NEAREST_LIGHTS; i; i--, pNearestLight++) {
+		if ((j = *pNearestLight) < 0)
 			break;
-		if ((lightP = RenderLights (j)) && (lightP->render.bUsed [nThread] == 2))
-			ResetUsed (lightP, nThread);
+		if ((pLight = RenderLights (j)) && (pLight->render.bUsed [nThread] == 2))
+			ResetUsed (pLight, nThread);
 		}
 	}
 }
 
 //------------------------------------------------------------------------------
 
-void CLightManager::ResetUsed (CDynLight* lightP, int nThread)
+void CLightManager::ResetUsed (CDynLight* pLight, int32_t nThread)
 {
-	CActiveDynLight* activeLightsP = lightP->render.activeLightsP [nThread];
+	CActiveDynLight* pActiveLights = pLight->render.pActiveLights [nThread];
 
-if (activeLightsP) {
-	lightP->render.activeLightsP [nThread] = NULL;
-	activeLightsP->lightP = NULL;
-	activeLightsP->nType = 0;
+if (pActiveLights) {
+	pLight->render.pActiveLights [nThread] = NULL;
+	pActiveLights->pLight = NULL;
+	pActiveLights->nType = 0;
 	}
-lightP->render.bUsed [nThread] = 0;
+pLight->render.bUsed [nThread] = 0;
 }
 
 //------------------------------------------------------------------------------
 
-void CLightManager::ResetAllUsed (int bVariable, int nThread)
+void CLightManager::ResetAllUsed (int32_t bVariable, int32_t nThread)
 {
-	int			i = m_data.nLights [1];
-	CDynLight*	lightP;
+	int32_t			i = m_data.nLights [1];
+	CDynLight*	pLight;
 
 if (bVariable) {
 	while (i) {
-		if ((lightP = m_data.renderLights [--i])) {
-			if (lightP->info.nType < 2)
+		if ((pLight = m_data.renderLights [--i])) {
+			if (pLight->info.nType < 2)
 				break;
-			ResetUsed (lightP, nThread);
+			ResetUsed (pLight, nThread);
 			}
 		}
 	}
 else {
 	while (i) {
-		if ((lightP = m_data.renderLights [--i])) {
-			ResetUsed (lightP, nThread);
+		if ((pLight = m_data.renderLights [--i])) {
+			ResetUsed (pLight, nThread);
 			}
 		}
 	}
@@ -738,16 +758,16 @@ else {
 
 //------------------------------------------------------------------------------
 
-void CLightManager::ResetActive (int nThread, int nActive)
+void CLightManager::ResetActive (int32_t nThread, int32_t nActive)
 {
-	CDynLightIndex*	sliP = &m_data.index [0][nThread];
-	int					h;
+	CDynLightIndex*	pLightIndex = &m_data.index [0][nThread];
+	int32_t					h;
 
-if (0 < (h = sliP->nLast - sliP->nFirst + 1))
-	memset (m_data.active [nThread] + sliP->nFirst, 0, sizeof (CActiveDynLight) * h);
-sliP->nActive = nActive;
-sliP->nFirst = MAX_OGL_LIGHTS;
-sliP->nLast = 0;
+if (0 < (h = pLightIndex->nLast - pLightIndex->nFirst + 1))
+	memset (m_data.active [nThread] + pLightIndex->nFirst, 0, sizeof (CActiveDynLight) * h);
+pLightIndex->nActive = nActive;
+pLightIndex->nFirst = MAX_OGL_LIGHTS;
+pLightIndex->nLast = 0;
 }
 
 // ----------------------------------------------------------------------------------------------

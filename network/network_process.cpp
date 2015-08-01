@@ -35,23 +35,21 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 
 //------------------------------------------------------------------------------
 
-void NetworkProcessMonitorVector (int vector)
+void NetworkProcessMonitorVector (int32_t vector)
 {
-	int		i, j;
-	int		tm, ec, bm;
-	int		count = 0;
-	CSegment	*segP = SEGMENTS.Buffer ();
-	CSide		*sideP;
+	int32_t		i, j;
+	int32_t		tm, ec, bm;
+	int32_t		count = 0;
+	CSegment	*pSeg = SEGMENTS.Buffer ();
+	CSide		*pSide;
 
-for (i = 0; i <= gameData.segs.nLastSegment; i++, segP++) {
-	for (j = 0, sideP = segP->m_sides; j < SEGMENT_SIDE_COUNT; j++, sideP++) {
-		if (!sideP->FaceCount ())
+for (i = 0; i <= gameData.segData.nLastSegment; i++, pSeg++) {
+	for (j = 0, pSide = pSeg->m_sides; j < SEGMENT_SIDE_COUNT; j++, pSide++) {
+		if (!pSide->FaceCount ())
 			continue;
-		if (((tm = sideP->m_nOvlTex) != 0) &&
-				((ec = gameData.pig.tex.tMapInfoP [tm].nEffectClip) != -1) &&
-				((bm = gameData.effects.effectP [ec].nDestBm) != -1)) {
+		if (((tm = pSide->m_nOvlTex) != 0) && ((ec = gameData.pigData.tex.pTexMapInfo [tm].nEffectClip) != -1) && ((bm = gameData.effectData.pEffect [ec].destroyed.nTexture) != -1)) {
 			if (vector & (1 << count))
-				sideP->m_nOvlTex = bm;
+				pSide->m_nOvlTex = bm;
 			count++;
 			//Assert (count < 32);
 			}
@@ -61,27 +59,27 @@ for (i = 0; i <= gameData.segs.nLastSegment; i++, segP++) {
 
 //------------------------------------------------------------------------------
 
-void NetworkProcessGameInfo (ubyte *dataP)
+void NetworkProcessGameInfo (uint8_t *data)
 {
-	CNetGameInfo	newGame (reinterpret_cast<tNetGameInfo*> (dataP));
+	CNetGameInfo	newGame (reinterpret_cast<tNetGameInfo*> (data));
 
 #if defined (WORDS_BIGENDIAN) || defined (__BIG_ENDIAN__)
 	CNetGameInfo tmp_info;
 
 if (gameStates.multi.nGameType >= IPX_GAME) {
-	ReceiveNetGamePacket (dataP, &tmp_info, 0); // get correctly aligned structure
+	ReceiveNetGamePacket (data, &tmp_info, 0); // get correctly aligned structure
 	newGame = tmp_info;
 	}
 #endif
 networkData.bWaitingForPlayerInfo = 0;
 #if SECURITY_CHECK
-if (newGame.m_info.nSecurity != playerInfoP->m_info.nSecurity) {
+if (newGame.m_info.nSecurity != pPlayerInfo->m_info.nSecurity) {
 	Int3 ();     // Get Jason
    return;     // If this first half doesn't go with the second half
    }
 #endif
-Assert (playerInfoP != NULL);
-int i = FindActiveNetGame (newGame.m_info.szGameName, newGame.m_info.nSecurity);
+Assert (pPlayerInfo != NULL);
+int32_t i = FindActiveNetGame (newGame.m_info.szGameName, newGame.m_info.nSecurity);
 if (i == MAX_ACTIVE_NETGAMES) {
 #if 1
 	console.printf (CON_DBG, "Too many netgames.\n");
@@ -94,10 +92,10 @@ if (i == networkData.nActiveGames) {
 	networkData.nActiveGames++;
 	}
 networkData.bGamesChanged = 1;
-// MWA  memcpy (&activeNetGames [i], dataP, sizeof (tNetGameInfo);
+// MWA  memcpy (&activeNetGames [i], data, sizeof (tNetGameInfo);
 nLastNetGameUpdate [i] = SDL_GetTicks ();
 activeNetGames [i] = newGame;
-activeNetPlayers [i] = *playerInfoP;
+activeNetPlayers [i] = *pPlayerInfo;
 if (networkData.nSecurityCheck)
 #if SECURITY_CHECK
 	if (activeNetGames [i].m_info.nSecurity == networkData.nSecurityCheck)
@@ -112,16 +110,16 @@ if (activeNetGames [i].m_info.nNumPlayers == 0) {	// Delete this game
 
 //------------------------------------------------------------------------------
 
-void NetworkProcessLiteInfo (ubyte *dataP)
+void NetworkProcessLiteInfo (uint8_t *data)
 {
-	int					i;
-	CNetGameInfo*		actGameP;
-	tNetGameInfoLite*	newInfo = reinterpret_cast<tNetGameInfoLite*> (dataP);
+	int32_t					i;
+	CNetGameInfo*		pActGame;
+	tNetGameInfoLite*	newInfo = reinterpret_cast<tNetGameInfoLite*> (data);
 #if defined (WORDS_BIGENDIAN) || defined (__BIG_ENDIAN__)
 	CNetGameInfo		tmp_info;
 
 if (gameStates.multi.nGameType >= IPX_GAME) {
-	ReceiveNetGamePacket (dataP, &tmp_info, 1);
+	ReceiveNetGamePacket (data, &tmp_info, 1);
 	newInfo = reinterpret_cast<tNetGameInfoLite*> (&tmp_info.m_info);
 	}
 #endif
@@ -135,41 +133,41 @@ if (i == networkData.nActiveGames) {
 		return;
 	networkData.nActiveGames++;
 	}
-actGameP = activeNetGames + i;
-memcpy (actGameP, reinterpret_cast<ubyte*> (newInfo), sizeof (tNetGameInfoLite));
-memcpy (actGameP->m_server, networkData.packetSource.src_network, sizeof (actGameP->m_server));
+pActGame = activeNetGames + i;
+memcpy (pActGame, reinterpret_cast<uint8_t*> (newInfo), sizeof (tNetGameInfoLite));
+memcpy (pActGame->m_server, networkData.packetDest.Network (), sizeof (pActGame->m_server));
 nLastNetGameUpdate [i] = SDL_GetTicks ();
 // See if this is really a Hoard/Entropy/Monsterball game
-// If so, adjust all the dataP accordingly
+// If so, adjust all the data accordingly
 if (HoardEquipped ()) {
-	if (actGameP->m_info.gameFlags & (NETGAME_FLAG_HOARD | NETGAME_FLAG_ENTROPY | NETGAME_FLAG_MONSTERBALL)) {
-		if ((actGameP->m_info.gameFlags & NETGAME_FLAG_MONSTERBALL) == NETGAME_FLAG_MONSTERBALL)
-			actGameP->m_info.gameMode = NETGAME_MONSTERBALL; 
-		else if (actGameP->m_info.gameFlags & NETGAME_FLAG_HOARD)
-			actGameP->m_info.gameMode = NETGAME_HOARD;					  
-		else if (actGameP->m_info.gameFlags & NETGAME_FLAG_ENTROPY)
-			actGameP->m_info.gameMode = NETGAME_ENTROPY;					  
-		actGameP->m_info.gameStatus = NETSTAT_PLAYING;
-		if (actGameP->m_info.gameFlags & NETGAME_FLAG_TEAM_HOARD)
-			actGameP->m_info.gameMode = NETGAME_TEAM_HOARD;					  
-		if (actGameP->m_info.gameFlags & NETGAME_FLAG_REALLY_ENDLEVEL)
-			actGameP->m_info.gameStatus = NETSTAT_ENDLEVEL;
-		if (actGameP->m_info.gameFlags & NETGAME_FLAG_REALLY_FORMING)
-			actGameP->m_info.gameStatus = NETSTAT_STARTING;
+	if (pActGame->m_info.gameFlags & (NETGAME_FLAG_HOARD | NETGAME_FLAG_ENTROPY | NETGAME_FLAG_MONSTERBALL)) {
+		if ((pActGame->m_info.gameFlags & NETGAME_FLAG_MONSTERBALL) == NETGAME_FLAG_MONSTERBALL)
+			pActGame->m_info.gameMode = NETGAME_MONSTERBALL; 
+		else if (pActGame->m_info.gameFlags & NETGAME_FLAG_HOARD)
+			pActGame->m_info.gameMode = NETGAME_HOARD;					  
+		else if (pActGame->m_info.gameFlags & NETGAME_FLAG_ENTROPY)
+			pActGame->m_info.gameMode = NETGAME_ENTROPY;					  
+		pActGame->m_info.gameStatus = NETSTAT_PLAYING;
+		if (pActGame->m_info.gameFlags & NETGAME_FLAG_TEAM_HOARD)
+			pActGame->m_info.gameMode = NETGAME_TEAM_HOARD;					  
+		if (pActGame->m_info.gameFlags & NETGAME_FLAG_REALLY_ENDLEVEL)
+			pActGame->m_info.gameStatus = NETSTAT_ENDLEVEL;
+		if (pActGame->m_info.gameFlags & NETGAME_FLAG_REALLY_FORMING)
+			pActGame->m_info.gameStatus = NETSTAT_STARTING;
 		}
 	}
-if (actGameP->m_info.nNumPlayers == 0)
+if (pActGame->m_info.nNumPlayers == 0)
 	DeleteActiveNetGame (i);
 }
 
 //------------------------------------------------------------------------------
 
-int NetworkProcessExtraGameInfo (ubyte *dataP)
+int32_t NetworkProcessExtraGameInfo (uint8_t *data)
 {
-ReceiveExtraGameInfoPacket (dataP, extraGameInfo + 1);
+ReceiveExtraGameInfoPacket (data, extraGameInfo + 1);
 memcpy (extraGameInfo, extraGameInfo + 1, sizeof (extraGameInfo [0]));
 if (extraGameInfo [1].nVersion != EGI_DATA_VERSION) {
-	MsgBox (TXT_SORRY, NULL, 1, TXT_OK, TXT_D2X_VERSION_MISMATCH);
+	InfoBox (TXT_SORRY, NULL, BG_STANDARD, 1, TXT_OK, TXT_D2X_VERSION_MISMATCH);
 	networkData.nStatus = NETSTAT_MENU;
 	return 0;
 	}
@@ -178,7 +176,7 @@ if (!extraGameInfo [1].bAllowCustomWeapons)
 SetMonsterballForces ();
 LogExtraGameInfo ();
 gameStates.app.bHaveExtraGameInfo [1] = 1;
-int i = FindActiveNetGame (extraGameInfo [1].szGameName, extraGameInfo [1].nSecurity);
+int32_t i = FindActiveNetGame (extraGameInfo [1].szGameName, extraGameInfo [1].nSecurity);
 if (i < networkData.nActiveGames)
 	activeExtraGameInfo [i] = extraGameInfo [1];
 else
@@ -190,23 +188,23 @@ return 1;
 
 //------------------------------------------------------------------------------
 
-void NetworkProcessDump (tSequencePacket *their)
+void NetworkProcessDump (tPlayerSyncData *their)
 {
 	// Our request for join was denied.  Tell the user why.
 
-if (their->player.connected != 7) {
-	MsgBox (NULL, NULL, 1, TXT_OK, NET_DUMP_STRINGS (their->player.connected));
+if (their->player.connected != CONNECT_ADVANCE_LEVEL) {
+	TextBox (NULL, BG_STANDARD, 1, TXT_OK, NET_DUMP_STRINGS (their->player.connected));
 	networkData.nStatus = NETSTAT_MENU;
 	}
 else {
-	for (int i = 0; i < gameData.multiplayer.nPlayers; i++) {
-		if (!stricmp (their->player.callsign, gameData.multiplayer.players [i].callsign)) {
+	for (int32_t i = 0; i < N_PLAYERS; i++) {
+		if (!stricmp (their->player.callsign, PLAYER (i).callsign)) {
 			if (i != WhoIsGameHost ()) 
 				HUDInitMessage (TXT_KICK_ATTEMPT, their->player.callsign);
 			else {
 				char temp [40];
 				sprintf (temp, TXT_KICKED_YOU, their->player.callsign);
-				MsgBox (NULL, NULL, 1, TXT_OK, &temp);
+				TextBox (NULL, BG_STANDARD, 1, TXT_OK, &temp);
 				if (networkData.nStatus == NETSTAT_PLAYING) {
 					gameStates.multi.bIWasKicked = 1;
 					MultiLeaveGame ();     
@@ -221,15 +219,14 @@ else {
 
 //------------------------------------------------------------------------------
 
-void NetworkProcessRequest (tSequencePacket *their)
+void NetworkProcessRequest (tPlayerSyncData *their)
 {
-	// Player is ready to receieve a sync packet
-	int i;
-
-for (i = 0; i < gameData.multiplayer.nPlayers; i++) {
-	if (!CmpNetPlayers (their->player.callsign, netPlayers [0].m_info.players [i].callsign, 
-								&their->player.network, &netPlayers [0].m_info.players [i].network)) {
-		CONNECT (i, CONNECT_PLAYING);
+// Player is ready to receieve a sync packet
+for (int32_t nPlayer = 0; nPlayer < N_PLAYERS; nPlayer++) {
+	if (!CmpNetPlayers (their->player.callsign, NETPLAYER (nPlayer).callsign, 
+							  &their->player.network, &NETPLAYER (nPlayer).network)) {
+		CONNECT (nPlayer, CONNECT_PLAYING);
+		PLAYER (nPlayer).m_nLevel = missionManager.nCurrentLevel;
 		break;
 		}
 	}                       
@@ -237,20 +234,20 @@ for (i = 0; i < gameData.multiplayer.nPlayers; i++) {
 
 //------------------------------------------------------------------------------
 
-void NetworkProcessPData (char *dataP)
+void NetworkProcessPlayerData (uint8_t* data)
 {
-if (netGame.GetShortPackets ())
-	NetworkReadPDataShortPacket (reinterpret_cast<tFrameInfoShort*> (dataP));
+if (netGameInfo.GetShortPackets ())
+	NetworkReadShortPlayerDataPacket (reinterpret_cast<tFrameInfoShort*> (data));
 else
-	NetworkReadPDataLongPacket (reinterpret_cast<tFrameInfoLong*> (dataP));
+	NetworkReadLongPlayerDataPacket (reinterpret_cast<tFrameInfoLong*> (data));
 }
 
 //------------------------------------------------------------------------------
 
-void NetworkProcessNakedPData (char *dataP, int len)
+void NetworkProcessMineData (uint8_t *data, int32_t len)
  {
-   int nPlayer = dataP [1]; 
-   Assert (dataP [0] == PID_NAKED_PDATA);
+   int32_t nPlayer = data [1]; 
+   Assert (data [0] == PID_MINE_DATA);
 
 if (nPlayer < 0) {
 #if 1			
@@ -260,7 +257,7 @@ if (nPlayer < 0) {
 	return;
 	}
 
-if (!gameData.multigame.bQuitGame && (nPlayer >= gameData.multiplayer.nPlayers)) {
+if (!gameData.multigame.bQuitGame && (nPlayer >= N_PLAYERS)) {
 	if (networkData.nStatus != NETSTAT_WAITING) {
 		Int3 (); // We missed an important packet!
 		NetworkConsistencyError ();
@@ -268,36 +265,36 @@ if (!gameData.multigame.bQuitGame && (nPlayer >= gameData.multiplayer.nPlayers))
 	return;
 	}
 if (gameStates.app.bEndLevelSequence || (networkData.nStatus == NETSTAT_ENDLEVEL)) {
-	int oldEndlevelSequence = gameStates.app.bEndLevelSequence;
+	int32_t oldEndlevelSequence = gameStates.app.bEndLevelSequence;
 	gameStates.app.bEndLevelSequence = 1;
-	MultiProcessBigData (reinterpret_cast<char*> (dataP + 2), len - 2);
+	MultiProcessBigData (data + 2, len - 2);
 	gameStates.app.bEndLevelSequence = oldEndlevelSequence;
 	return;
 	}
-MultiProcessBigData (reinterpret_cast<char*> (dataP + 2), len - 2);
+MultiProcessBigData (data + 2, len - 2);
  }
 
 //------------------------------------------------------------------------------
 
-void NetworkProcessNamesReturn (char *dataP)
+void NetworkProcessNamesReturn (uint8_t* data)
  {
 	CMenu	m (15);
    char	mText [15][50], temp [50];
-	int	i, l, nInMenu, gnum, num = 0, count = 5, nPlayers;
+	int32_t	i, l, nInMenu, gnum, num = 0, count = 5, nPlayers;
    
 memset (mText, 0, sizeof (mText));
-if (networkData.nNamesInfoSecurity != *reinterpret_cast<int*> (dataP + 1)) {
+if (networkData.nNamesInfoSecurity != *reinterpret_cast<int32_t*> (data + 1)) {
 #if 1			
   console.printf (CON_DBG, "Bad security on names return!\n");
-  console.printf (CON_DBG, "NIS=%d dataP=%d\n", networkData.nNamesInfoSecurity, *reinterpret_cast<int*> (dataP + 1));
+  console.printf (CON_DBG, "NIS=%d data=%d\n", networkData.nNamesInfoSecurity, *reinterpret_cast<int32_t*> (data + 1));
 #endif
 	return;
 	}
-nPlayers = dataP [count++]; 
+nPlayers = data [count++]; 
 if (nPlayers == 255) {
 	gameStates.multi.bSurfingNet = 0;
 	networkData.nNamesInfoSecurity = -1;
-	MsgBox (NULL, NULL, 1, "OK", "That game is refusing\nname requests.\n");
+	TextBox (NULL, BG_STANDARD, 1, "OK", "That game is refusing\nname requests.\n");
 	gameStates.multi.bSurfingNet=1;
 	return;
 	}
@@ -313,7 +310,7 @@ for (gnum = -1, i = 0; i < networkData.nActiveGames; i++) {
 if (gnum == -1) {
 	gameStates.multi.bSurfingNet = 0;
 	networkData.nNamesInfoSecurity = -1;
-	MsgBox (NULL, NULL, 1, TXT_OK, TXT_GAME_GONE);
+	TextBox (NULL, BG_STANDARD, 1, TXT_OK, TXT_GAME_GONE);
 	gameStates.multi.bSurfingNet = 1;
 	return;
 	}
@@ -323,8 +320,8 @@ gnum = 0;
 sprintf (mText [num], TXT_GAME_PLRS, activeNetGames [gnum].m_info.szGameName); 
 num++;
 for (i = 0; i < nPlayers; i++) {
-	l = dataP [count++];
-	memcpy (temp, dataP + count, CALLSIGN_LEN + 1);
+	l = data [count++];
+	memcpy (temp, data + count, CALLSIGN_LEN + 1);
 	count += CALLSIGN_LEN + 1;
 	if (gameOpts->multi.bNoRankings)
 		sprintf (mText [num], "%s", temp);
@@ -332,10 +329,10 @@ for (i = 0; i < nPlayers; i++) {
 		sprintf (mText [num], "%s%s", pszRankStrings [l], temp);
 	num++;
 	}
-if (dataP [count] == 99) {
+if (data [count] == 99) {
 	sprintf (mText [num++], " ");
-	sprintf (mText [num++], TXT_SHORT_PACKETS2, dataP [count+1] ? TXT_ON : TXT_OFF);
-	sprintf (mText [num++], TXT_PPS2, dataP [count+2]);
+	sprintf (mText [num++], TXT_SHORT_PACKETS2, data [count+1] ? TXT_ON : TXT_OFF);
+	sprintf (mText [num++], TXT_PPS2, data [count+2]);
 	}
 for (i = 0; i < num; i++) 
 	m.AddText ("", mText [i]);	
@@ -345,21 +342,6 @@ gameStates.menus.nInMenu = 0;
 m.TinyMenu (NULL, NULL);
 gameStates.menus.nInMenu = nInMenu;
 bAlreadyShowingInfo = 0;
-}
-
-//------------------------------------------------------------------------------
-
-void NetworkProcessMissingObjFrames (char *dataP)
-{
-	tMissingObjFrames	missingObjFrames;
-
-ReceiveMissingObjFramesPacket (reinterpret_cast<ubyte*> (dataP), &missingObjFrames);
-tNetworkSyncData *syncP = FindJoiningPlayer (missingObjFrames.nPlayer);
-if (syncP) {
-	syncP->objs.missingFrames = missingObjFrames;
-	syncP->objs.nCurrent = -1;				
-	syncP->nState = 3;
-	}
 }
 
 //------------------------------------------------------------------------------

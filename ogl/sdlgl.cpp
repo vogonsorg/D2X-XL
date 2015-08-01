@@ -41,14 +41,14 @@
 
 //------------------------------------------------------------------------------
 
-static ushort gammaRamp [512];
+static uint16_t gammaRamp [512];
 
 //------------------------------------------------------------------------------
 
 void InitGammaRamp (void)
 {
-	int i, j;
-	ushort *pg = gammaRamp;
+	int32_t i, j;
+	uint16_t *pg = gammaRamp;
 
 for (i = 256, j = 0; i; i--, j += 256, pg++)
 	*pg = j;
@@ -57,7 +57,7 @@ memset (pg, 0xff, 256 * sizeof (*pg));
 
 //------------------------------------------------------------------------------
 
-int SdlGlSetBrightnessInternal (void)
+int32_t SdlGlSetBrightnessInternal (void)
 {
 return SDL_SetGammaRamp ((Uint16*) (gammaRamp + paletteManager.RedEffect () * 4),
 	                      (Uint16*) (gammaRamp + paletteManager.GreenEffect () * 4),
@@ -66,10 +66,10 @@ return SDL_SetGammaRamp ((Uint16*) (gammaRamp + paletteManager.RedEffect () * 4)
 
 //------------------------------------------------------------------------------
 
-int SdlGlVideoModeOK (int w, int h)
+int32_t SdlGlVideoModeOK (int32_t w, int32_t h)
 {
 PrintLog (1, "checking video mode (%d X %d)\n", w, h);
-int nColorBits = SDL_VideoModeOK (w, h, FindArg ("-gl_16bpp") ? 16 : 32, SDL_VIDEO_FLAGS);
+int32_t nColorBits = SDL_VideoModeOK (w, h, FindArg ("-gl_16bpp") ? 16 : 32, SDL_VIDEO_FLAGS);
 PrintLog (0, "SDL suggests %d bits/pixel\n", nColorBits);
 if (!nColorBits) {
 	PrintLog (-1);
@@ -82,9 +82,9 @@ return 1;
 
 //------------------------------------------------------------------------------
 
-int SdlGlSetAttribute (const char *szSwitch, const char *szAttr, SDL_GLattr attr, int value)
+int32_t SdlGlSetAttribute (const char *szSwitch, const char *szAttr, SDL_GLattr attr, int32_t value)
 {
-	int	i;
+	int32_t	i;
 
 if (szSwitch && (i = FindArg (szSwitch)) && appConfig [i + 1])
 	attr = (SDL_GLattr) atoi (appConfig [i + 1]);
@@ -97,7 +97,7 @@ return i;
 
 void SdlGlInitAttributes (void)
 {
-	int t;
+	int32_t t;
 
 /***/PrintLog (1, "setting OpenGL attributes\n");
 SdlGlSetAttribute ("-gl_red", "SDL_GL_RED_SIZE", SDL_GL_RED_SIZE, 8);
@@ -131,16 +131,16 @@ PrintLog (-1);
 
 //------------------------------------------------------------------------------
 
-int SdlGlInitWindow (int w, int h, int bForce)
+int32_t SdlGlInitWindow (int32_t w, int32_t h, int32_t bForce)
 {
-	int			bRebuild = 0;
+	int32_t			bRebuild = 0;
 	GLint			i;
 
 if (ogl.m_states.bInitialized) {
 	if (!bForce && (w == ogl.m_states.nCurWidth) && (h == ogl.m_states.nCurHeight) && (ogl.m_states.bCurFullScreen == ogl.m_states.bFullScreen))
 		return -1;
-	GrUpdate (1); // blank screen/window
-	GrUpdate (1);
+	ogl.Update (1); // blank screen/window
+	ogl.Update (1);
 	if ((w != ogl.m_states.nCurWidth) || (h != ogl.m_states.nCurHeight) ||
 		 (ogl.m_states.bCurFullScreen != ogl.m_states.bFullScreen)) {
 		textureManager.Destroy ();//if we are or were fullscreen, changing vid mode will invalidate current textures
@@ -168,11 +168,11 @@ if (!SdlGlVideoModeOK (w, h) ||
 	}
 PrintLog (-1);
 #endif
-const SDL_VideoInfo* viP = SDL_GetVideoInfo ();
-if (viP->video_mem) {
-	if (viP->video_mem < 256 * 1024 * 1024)
+const SDL_VideoInfo* pVideoInfo = SDL_GetVideoInfo ();
+if (pVideoInfo->video_mem) {
+	if (pVideoInfo->video_mem < 256 * 1024 * 1024)
 		gameStates.render.nMaxTextureQuality = 1;
-	else if (viP->video_mem < 512 * 1024 * 1024)
+	else if (pVideoInfo->video_mem < 512 * 1024 * 1024)
 		gameStates.render.nMaxTextureQuality = 2;
 	}
 ogl.m_states.nColorBits = 0;
@@ -198,7 +198,7 @@ ogl.m_states.nCurWidth = w;
 ogl.m_states.nCurHeight = h;
 ogl.m_states.bCurFullScreen = ogl.m_states.bFullScreen;
 if (ogl.m_states.bInitialized && bRebuild) {
-	ogl.Viewport (0, 0, w, h);
+	ogl.SetViewport (0, 0, w, h);
 	if (gameStates.app.bGameRunning) {
 		//paletteManager.ResumeEffect ();
 		ogl.RebuildContext (1);
@@ -227,7 +227,7 @@ if (ogl.m_states.bInitialized) {
 
 //------------------------------------------------------------------------------
 
-void SdlGlDoFullScreenInternal (int bForce)
+void SdlGlDoFullScreenInternal (int32_t bForce)
 {
 SdlGlInitWindow (ogl.m_states.nCurWidth, ogl.m_states.nCurHeight, bForce);
 }

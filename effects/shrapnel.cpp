@@ -26,30 +26,36 @@ CShrapnelManager shrapnelManager;
 
 // -----------------------------------------------------------------------------
 
-#define SHRAPNEL_MAX_PARTS			225
+#define SHRAPNEL_MAX_PARTS			250
 #define SHRAPNEL_PART_LIFE			-1500
 #define SHRAPNEL_PART_SPEED		10
 
 static float fShrapnelScale [5] = {0, 5.0f, 10.0f, 15.0f, 20.0f};
 
-void CShrapnel::Create (CObject* parentObjP, CObject* objP, float fScale)
+void CShrapnel::Create (CObject* pParentObj, CObject* pObj, float fScale)
 {
 	static CFloatVector color = {{{0.95f, 0.95f, 0.95f, 2.0f}}};
 
 m_info.vDir = CFixVector::Random ();
-m_info.vPos = objP->info.position.vPos + m_info.vDir * (parentObjP->info.xSize / 4 + rand () % (parentObjP->info.xSize / 2));
-m_info.nTurn = 1;
-m_info.xSpeed = 3 * (I2X (1) / 20 + rand () % (I2X (1) / 20)) / 4;
+m_info.vPos = pObj->info.position.vPos + m_info.vDir * (3 * pParentObj->info.xSize / 4 + Rand (pParentObj->info.xSize / 2));
+m_info.nTurn = 1 + Rand (4);
+#if 1 // slower 
+m_info.xSpeed = 3 * (I2X (1) / 20 + Rand (I2X (1) / 20)) / 4;
+float fSpeedScale = sqrt (X2F (I2X (3) / 40) / X2F (m_info.xSpeed));
+#else // faster
+m_info.xSpeed = I2X (1) / 20 + Rand (I2X (1) / 20);
+float fSpeedScale = sqrt (X2F (I2X (1) / 10) / X2F (m_info.xSpeed));
+#endif
 m_info.xLife =
 m_info.xTTL = I2X (3) / 2 + rand ();
 m_info.tUpdate = gameStates.app.nSDLTicks [0];
 m_info.nSmoke = 
-	particleManager.Create (&m_info.vPos, NULL, NULL, objP->info.nSegment, 1, -SHRAPNEL_MAX_PARTS * max (gameOpts->render.particles.nQuality, 2),
+	particleManager.Create (&m_info.vPos, NULL, NULL, pObj->info.nSegment, 1, int32_t (float (-SHRAPNEL_MAX_PARTS) / fSpeedScale) * Max (gameOpts->render.particles.nQuality, 2),
 								   -PARTICLE_SIZE (1, fScale, 1), 
 									/*-1, 1,*/ 
 									SHRAPNEL_PART_LIFE, SHRAPNEL_PART_SPEED, SIMPLE_SMOKE_PARTICLES, 0x7fffffff, &color, 1, -1);
-if (objP->info.xLifeLeft < m_info.xLife)
-	objP->SetLife (m_info.xLife);
+if (pObj->info.xLifeLeft < m_info.xLife)
+	pObj->SetLife (m_info.xLife);
 }
 
 // -----------------------------------------------------------------------------
@@ -75,10 +81,13 @@ if ((nTicks = gameStates.app.nSDLTicks [0] - m_info.tUpdate) < 25)
 	return;
 xSpeed = (fix) (xSpeed / gameStates.gameplay.slowmo [0].fSpeed);
 for (; nTicks >= 25; nTicks -= 25) {
+#if 0
+	vOffs = m_info.vDir; // move straight
+#else
 	if (--(m_info.nTurn))
 		vOffs = m_info.vOffs;
-	else {
-		m_info.nTurn = ((m_info.xTTL > I2X (1) / 2) ? 2 : 4) + RandShort () % 4;
+	else { // change direction a bit
+		m_info.nTurn = ((m_info.xTTL > I2X (1) / 2) ? 2 : 4) + Rand (4);
 		vOffs = m_info.vDir;
 		vOffs.v.coord.x = FixMul (vOffs.v.coord.x, 2 * RandShort ());
 		vOffs.v.coord.y = FixMul (vOffs.v.coord.y, 2 * RandShort ());
@@ -86,6 +95,7 @@ for (; nTicks >= 25; nTicks -= 25) {
 		CFixVector::Normalize (vOffs);
 		m_info.vOffs = vOffs;
 		}
+#endif
 	vOffs *= xSpeed;
 	m_info.vPos += vOffs;
 	}
@@ -101,7 +111,7 @@ void CShrapnel::Draw (void)
 if (m_info.xTTL > 0) {
 	explBlast.Bitmap ()->SetColor ();
 #if 0
-	fix xSize = I2X (1) / 2 + RandShort () % (I2X (1) / 4);
+	fix xSize = I2X (1) / 2 + Rand (I2X (1) / 4);
 	ogl.RenderSprite (explBlast.Bitmap (), m_info.vPos, xSize, xSize, X2F (m_info.xTTL) / X2F (m_info.xLife) / 2, 0, 0);
 #endif
 	}
@@ -109,7 +119,7 @@ if (m_info.xTTL > 0) {
 
 // -----------------------------------------------------------------------------
 
-int CShrapnel::Update (void)
+int32_t CShrapnel::Update (void)
 {
 if (m_info.xTTL <= 0)
 	return -1;	//dead
@@ -124,17 +134,17 @@ return 0; //kill
 // -----------------------------------------------------------------------------
 // -----------------------------------------------------------------------------
 
-uint CShrapnelCloud::Update (void)
+uint32_t CShrapnelCloud::Update (void)
 {
-	int i;
+	int32_t i;
 
 #if USE_OPENMP //> 1
 #	pragma omp parallel for 
 #endif
-	for (i = 0; i < int (m_tos); i++)
+	for (i = 0; i < int32_t (m_tos); i++)
 		m_data.buffer [i].Update ();
 
-for (i = int (m_tos) - 1; i >= 0; i--)
+for (i = int32_t (m_tos) - 1; i >= 0; i--)
 	if (m_data.buffer [i].TTL () < 0)
 		Delete (i);
 
@@ -152,26 +162,26 @@ if (explBlast.Load ())
 #if USE_OPENMP //> 1
 #	pragma omp parallel for
 #endif
-	for (int i = 0; i < int (m_tos); i++)
+	for (int32_t i = 0; i < int32_t (m_tos); i++)
 		m_data.buffer [i].Draw ();
 }
 
 // -----------------------------------------------------------------------------
 
-int CShrapnelCloud::Create (CObject* parentObjP, CObject* objP)
+int32_t CShrapnelCloud::Create (CObject* pParentObj, CObject* pObj)
 {
-	float		fScale = float (sqrt (X2F (parentObjP->info.xSize))) * 1.25f;
-	int		i, 
-				h = int (fScale * fShrapnelScale [gameOpts->render.effects.nShrapnels] + 0.5);
+	float		fScale = float (sqrt (X2F (pParentObj->info.xSize))) * 1.25f;
+	int32_t	i, 
+				h = (int32_t) FRound (fScale * fShrapnelScale [gameOpts->render.effects.nShrapnels]);
 
-objP->SetLife (0);
-objP->cType.explInfo.nSpawnTime = -1;
-objP->cType.explInfo.nDeleteObj = -1;
-objP->cType.explInfo.nDeleteTime = -1;
+pObj->UpdateLife (0);
+pObj->cType.explInfo.nSpawnTime = -1;
+pObj->cType.explInfo.nDestroyedObj = -1;
+pObj->cType.explInfo.nDeleteTime = -1;
 #if DBG
 h += h / 2;
 #else
-h = 5 * h / 4 + RandShort () % (h / 2);
+h = 5 * h / 4 + Rand (h / 2);
 #endif
 if (!CStack<CShrapnel>::Create (h))
 	return 0;
@@ -182,11 +192,11 @@ fScale = 7.0f / fScale;
 #	pragma omp parallel for 
 #endif
 for (i = 0; i < h; i++) 
-	m_data.buffer [i].Create (parentObjP, objP, 3.0f);
-objP->info.xLifeLeft *= 2;
-objP->cType.explInfo.nSpawnTime = -1;
-objP->cType.explInfo.nDeleteObj = -1;
-objP->cType.explInfo.nDeleteTime = -1;
+	m_data.buffer [i].Create (pParentObj, pObj, 3.0f);
+pObj->SetLife (pObj->LifeLeft  () * 2);
+pObj->cType.explInfo.nSpawnTime = -1;
+pObj->cType.explInfo.nDestroyedObj = -1;
+pObj->cType.explInfo.nDeleteTime = -1;
 return 1;
 }
 
@@ -197,7 +207,7 @@ void CShrapnelCloud::Destroy (void)
 #if USE_OPENMP //> 1
 #	pragma omp parallel for 
 #endif
-for (int i = 0; i < int (m_tos); i++)
+for (int32_t i = 0; i < int32_t (m_tos); i++)
 	m_data.buffer [i].Destroy ();
 CStack<CShrapnel>::Destroy ();
 }
@@ -220,69 +230,69 @@ CArray<CShrapnelCloud>::Destroy ();
 
 // -----------------------------------------------------------------------------
 
-int CShrapnelManager::Create (CObject* objP)
+int32_t CShrapnelManager::Create (CObject* pObj)
 {
-#if 1
+#if 0
 return 0;
 #else
 if (!SHOW_SMOKE)
 	return 0;
 if (!gameOpts->render.effects.nShrapnels)
 	return 0;
-if (objP->info.nFlags & OF_ARMAGEDDON)
+if (pObj->info.nFlags & OF_ARMAGEDDON)
 	return 0;
-if ((objP->info.nType != OBJ_PLAYER) && (objP->info.nType != OBJ_ROBOT) && (objP->info.nType != OBJ_DEBRIS))
+if ((pObj->info.nType != OBJ_PLAYER) && (pObj->info.nType != OBJ_ROBOT) && (pObj->info.nType != OBJ_DEBRIS))
 	return 0;
-short nObject = CreateFireball (0, objP->info.nSegment, objP->info.position.vPos, 1, RT_SHRAPNELS);
+int16_t nObject = CreateFireball (0, pObj->info.nSegment, pObj->info.position.vPos, 1, RT_SHRAPNELS);
 if (0 > nObject)
 	return 0;
-return m_data.buffer [nObject].Create (objP, OBJECTS + nObject);
+return m_data.buffer [nObject].Create (pObj, OBJECT (nObject));
 #endif
 }
 
 // -----------------------------------------------------------------------------
 
-void CShrapnelManager::Draw (CObject* objP)
+void CShrapnelManager::Draw (CObject* pObj)
 {
-m_data.buffer [objP->Index ()].Draw ();
+m_data.buffer [pObj->Index ()].Draw ();
 }
 
 // -----------------------------------------------------------------------------
 
-int CShrapnelManager::Update (CObject* objP)
+int32_t CShrapnelManager::Update (CObject* pObj)
 {
-if ((objP->LifeLeft () <= 0) || !m_data.buffer [objP->Index ()].Update ())
-	Destroy (objP);
+if ((pObj->LifeLeft () <= 0) || !m_data.buffer [pObj->Index ()].Update ())
+	Destroy (pObj);
 return 0;
 }
 
 // -----------------------------------------------------------------------------
 
-void CShrapnelManager::Destroy (CObject* objP)
+void CShrapnelManager::Destroy (CObject* pObj)
 {
-if ((objP->info.nType != OBJ_FIREBALL) || (objP->info.renderType != RT_SHRAPNELS))
+if ((pObj->info.nType != OBJ_FIREBALL) || (pObj->info.renderType != RT_SHRAPNELS))
 	return;
-m_data.buffer [objP->Index ()].Destroy ();
-objP->SetLifeLeft (-1);
+m_data.buffer [pObj->Index ()].Destroy ();
+pObj->SetLifeLeft (-1);
 }
 
 //------------------------------------------------------------------------------
 
 void CShrapnelManager::DoFrame (void)
 {
-	CObject	*objP;
-	int		i;
+	CObject	*pObj;
+	int32_t	i;
 
 if (!SHOW_SMOKE)
 	return;
-FORALL_STATIC_OBJS (objP, i)
-	if (objP->info.renderType == RT_SHRAPNELS)
-		Update (objP);
-FORALL_ACTOR_OBJS (objP, i) {
-	i = objP->Index ();
-	if (gameData.objs.bWantEffect [i] & SHRAPNEL_SMOKE) {
-		gameData.objs.bWantEffect [i] &= ~SHRAPNEL_SMOKE;
-		Create (objP);
+FORALL_STATIC_OBJS (pObj)
+	if (pObj->info.renderType == RT_SHRAPNELS)
+		Update (pObj);
+FORALL_ACTOR_OBJS (pObj) {
+	i = pObj->Index ();
+	if (gameData.objData.bWantEffect [i] & SHRAPNEL_SMOKE) {
+		gameData.objData.bWantEffect [i] &= ~SHRAPNEL_SMOKE;
+		Create (pObj);
 		}
 	}
 }

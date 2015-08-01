@@ -37,7 +37,7 @@
 
 #if RENDER2TEXTURE == 2
 
-int CFBO::Available (void)
+int32_t CFBO::Available (void)
 {
 if (!ogl.m_features.bRenderToTexture)
 	return 0;
@@ -63,13 +63,15 @@ m_info.nBuffer = 0x7FFFFFFF;
 
 //------------------------------------------------------------------------------
 
-int CFBO::CreateColorBuffers (int nBuffers)
+int32_t CFBO::CreateColorBuffers (int32_t nBuffers)
 {
 if (!nBuffers)
 	return 1;
 
 	GLint	nMaxBuffers;
 
+PrintLog (1, "Creating %d color buffers\n", nBuffers);
+ogl.ClearError (false);
 glGetIntegerv (GL_MAX_COLOR_ATTACHMENTS_EXT, &nMaxBuffers);
 if (nMaxBuffers > MAX_COLOR_BUFFERS)
 	nMaxBuffers = MAX_COLOR_BUFFERS;
@@ -79,8 +81,15 @@ m_info.nColorBuffers =
 m_info.nBufferCount = nBuffers;
 m_info.nFirstBuffer = 0;
 
+#if DBG
+GLenum nError = glGetError ();
+if (nError)
+	nError = 0;
+#endif
+
 ogl.GenTextures (nBuffers, m_info.hColorBuffer);
-for (int i = 0; i < nBuffers; i++) {
+for (int32_t i = 0; i < nBuffers; i++) {
+	PrintLog (0, "color buffer #%d handle = %d\n", i + 1, m_info.hColorBuffer [i]);
 	ogl.BindTexture (m_info.hColorBuffer [i]);
 	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -88,13 +97,20 @@ for (int i = 0; i < nBuffers; i++) {
 	glTexParameteri (GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
 	glTexEnvi (GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE); 
 	glTexParameteri (GL_TEXTURE_2D, GL_GENERATE_MIPMAP, GL_FALSE);
-	if (m_info.nType == 2) // GPGPU
+	if (m_info.nType == -3) // GPGPU
 		glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA32F_ARB, m_info.nWidth, m_info.nHeight, 0, GL_RGBA, GL_FLOAT, NULL);
 	else {
 #if 0
 		if (i > 0)
 			glTexImage2D (GL_TEXTURE_2D, 0, GL_RGB, m_info.nWidth, m_info.nHeight, 0, GL_RGB, GL_FLOAT, NULL);
 		else 
+#endif
+#if 0
+		if (m_info.nType == -2) {
+			glTexImage2D (GL_TEXTURE_2D, 0, GL_RGBA, m_info.nWidth, m_info.nHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+			glGenerateMipmapEXT (GL_TEXTURE_2D);
+			}
+		else
 #endif
 			{
 			glTexImage2D (GL_TEXTURE_2D, 0, GL_RGB, m_info.nWidth, m_info.nHeight, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
@@ -104,21 +120,16 @@ for (int i = 0; i < nBuffers; i++) {
 	m_info.bufferIds [i] = GL_COLOR_ATTACHMENT0_EXT + i;
 	//glFramebufferTexture2DEXT (GL_FRAMEBUFFER_EXT, m_info.bufferIds [i], GL_TEXTURE_2D, m_info.hColorBuffer [i], 0);
 	}
-#if DBG
-GLenum nError = glGetError ();
-if (nError)
-	return 0;
-return 1;
-#else
-return glGetError () ? 0 : 1;
-#endif
+PrintLog (-1);
+return ogl.ClearError (false) ? 0 : 1;
 }
 
 //------------------------------------------------------------------------------
 
-int CFBO::CreateDepthBuffer (void)
+int32_t CFBO::CreateDepthBuffer (void)
 {
 ogl.ClearError (false);
+PrintLog (0, "Creating depth buffer (type = %d)\n", m_info.nType);
 if (m_info.nType == 3) { // depth buffer for shadow map
 	if (!(m_info.hDepthBuffer = ogl.CreateDepthTexture (GL_TEXTURE0, 1, 2, m_info.nWidth, m_info.nHeight)))
 		return 0;
@@ -126,10 +137,13 @@ if (m_info.nType == 3) { // depth buffer for shadow map
 	}
 else if (m_info.nType != 2) { // 2 -> GPGPU
 	// depth buffer
+#if 1
 	if (abs (m_info.nType) != 1) // -> no stencil buffer
 		glGenRenderbuffersEXT (1, &m_info.hDepthBuffer);
-	else { // depth + stencil buffer
-		m_info.hDepthBuffer = (m_info.nType == 1)
+	else 
+#endif
+		{ // depth + stencil buffer
+		m_info.hDepthBuffer = ((m_info.nType == 1) || (m_info.nType == -2) || (m_info.nType == -3))
 									  ? ogl.CreateDepthTexture (GL_TEXTURE0, 1, 1, m_info.nWidth, m_info.nHeight)
 									  : ogl.CopyDepthTexture (1); //ogl.m_states.hDepthBuffer [1];
 		if (!m_info.hDepthBuffer)
@@ -138,14 +152,7 @@ else if (m_info.nType != 2) { // 2 -> GPGPU
 		glFramebufferTexture2DEXT (GL_FRAMEBUFFER_EXT, GL_STENCIL_ATTACHMENT_EXT, GL_TEXTURE_2D, m_info.hStencilBuffer = m_info.hDepthBuffer, 0);
 		}
 	}
-#if DBG
-GLenum nError = glGetError ();
-if (nError)
-	return 0;
-return 1;
-#else
-return glGetError () ? 0 : 1;
-#endif
+return ogl.ClearError (false) ? 0 : 1;
 }
 
 //------------------------------------------------------------------------------
@@ -156,9 +163,13 @@ if (m_info.nType == 3) { // depth buffer for shadow map
 	glFramebufferTexture2DEXT (GL_FRAMEBUFFER_EXT, GL_DEPTH_ATTACHMENT_EXT, GL_TEXTURE_2D, m_info.hDepthBuffer, 0);
 	}
 else if (m_info.nType != 2) { // 2 -> GPGPU
-	for (int i = 0; i < m_info.nColorBuffers; i++)
+	for (int32_t i = 0; i < m_info.nColorBuffers; i++)
 		glFramebufferTexture2DEXT (GL_FRAMEBUFFER_EXT, m_info.bufferIds [i], GL_TEXTURE_2D, m_info.hColorBuffer [i], 0);
 	// depth + stencil buffer
+#if 0
+	glFramebufferTexture2DEXT (GL_FRAMEBUFFER_EXT, GL_DEPTH_ATTACHMENT_EXT, GL_TEXTURE_2D, m_info.hDepthBuffer, 0);
+	glFramebufferTexture2DEXT (GL_FRAMEBUFFER_EXT, GL_STENCIL_ATTACHMENT_EXT, GL_TEXTURE_2D, m_info.hStencilBuffer = m_info.hDepthBuffer, 0);
+#else
 	if (abs (m_info.nType) == 1) {
 		glFramebufferTexture2DEXT (GL_FRAMEBUFFER_EXT, GL_DEPTH_ATTACHMENT_EXT, GL_TEXTURE_2D, m_info.hDepthBuffer, 0);
 		glFramebufferTexture2DEXT (GL_FRAMEBUFFER_EXT, GL_STENCIL_ATTACHMENT_EXT, GL_TEXTURE_2D, m_info.hStencilBuffer = m_info.hDepthBuffer, 0);
@@ -169,12 +180,13 @@ else if (m_info.nType != 2) { // 2 -> GPGPU
 		glRenderbufferStorageEXT (GL_RENDERBUFFER_EXT, GL_DEPTH_COMPONENT24, m_info.nWidth, m_info.nHeight);
 		glFramebufferRenderbufferEXT (GL_FRAMEBUFFER_EXT, GL_DEPTH_ATTACHMENT_EXT, GL_RENDERBUFFER_EXT, m_info.hDepthBuffer);
 		}
+#endif
 	}
 }
 
 //------------------------------------------------------------------------------
 
-int CFBO::Create (int nWidth, int nHeight, int nType, int nColorBuffers)
+int32_t CFBO::Create (int32_t nWidth, int32_t nHeight, int32_t nType, int32_t nColorBuffers)
 {
 if (!ogl.m_features.bRenderToTexture)
 	return 0;
@@ -198,9 +210,14 @@ m_info.hDepthBuffer = 0;
 m_info.hStencilBuffer = 0;
 
 glGenFramebuffersEXT (1, &m_info.hFBO);
+PrintLog (0, "draw buffer handle = %d\n", m_info.hFBO);
 glBindFramebufferEXT (GL_FRAMEBUFFER_EXT, m_info.hFBO);
 
-if (!(CreateColorBuffers (nColorBuffers) && CreateDepthBuffer ())) {
+if (!CreateColorBuffers (nColorBuffers)) {
+	Destroy ();
+	return 0;
+	}
+if (/*(nType > 0) &&*/ !CreateDepthBuffer ()) {
 	Destroy ();
 	return 0;
 	}
@@ -236,7 +253,7 @@ if (m_info.hFBO) {
 
 //------------------------------------------------------------------------------
 
-int CFBO::Enable (int nColorBuffers)
+int32_t CFBO::Enable (int32_t nColorBuffers)
 {
 if (!m_info.bActive) {
 	if (Available () <= 0)
@@ -249,12 +266,15 @@ if (!m_info.bActive) {
 	}
 if (m_info.nType != 3)
 	SelectColorBuffers (nColorBuffers);
+#if DBG
+ogl.ClearError (false);
+#endif
 return m_info.bActive = 1;
 }
 
 //------------------------------------------------------------------------------
 
-int CFBO::Disable (void)
+int32_t CFBO::Disable (void)
 {
 if (!m_info.bActive)
 	return 1;
@@ -271,7 +291,7 @@ return 1;
 
 //------------------------------------------------------------------------------
 
-int CFBO::IsBound (void) 
+int32_t CFBO::IsBound (void) 
 { 
 return m_info.hColorBuffer [0] && (m_info.hColorBuffer [0] == ogl.BoundTexture ()); 
 }

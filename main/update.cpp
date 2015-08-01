@@ -65,21 +65,21 @@ class CDownloadCallback : public IBindStatusCallback {
 
 class CDownload {
 	protected:
-		int			m_nState;
-		int			m_nResult;
+		int32_t		m_nState;
+		int32_t		m_nResult;
 		const char* m_pszSrc;
 		const char* m_pszDest;
-		bool		m_bProgressBar;
+		bool			m_bProgressBar;
 
 		static CDownload* m_handler;
 
 	private:
-		int			m_nProgress;
-		int			m_nProgressMax;
-		int			m_nPercent;
+		int32_t		m_nProgress;
+		int32_t		m_nProgressMax;
+		int32_t		m_nPercent;
 		SDL_Thread*	m_thread;
-		int			m_nOptPercentage;
-		int			m_nOptProgress;
+		int32_t		m_nOptPercentage;
+		int32_t		m_nOptProgress;
 		CMenu			m_menu;
 
 	private:
@@ -95,16 +95,20 @@ class CDownload {
 				char szProgress [50];
 				sprintf (szProgress, "0%c done", '%');
 				m_nOptPercentage = m_menu.AddText (szProgress, 0);
-				m_menu [m_nOptPercentage].m_x = (short) 0x8000;	//centered
+				m_menu [m_nOptPercentage].m_x = (int16_t) 0x8000;	//centered
 				m_menu [m_nOptPercentage].m_bCentered = 1;
 				m_nOptProgress = m_menu.AddGauge ("progress bar", "                    ", -1, 100);
 				}
 			}
 
 	protected:
-		CDownload () : m_nState (-1), m_nResult (0), m_nProgress (0), m_nProgressMax (0), m_nPercent (0), m_thread (NULL) {}
+		CDownload () : m_nState (-1), m_nResult (0), m_pszSrc (NULL), m_pszDest (NULL), m_bProgressBar (false), m_nProgress (0), m_nProgressMax (0),
+							m_nPercent (0), m_thread (NULL), m_nOptPercentage (0), m_nOptProgress (0) {}
 
-		CDownload (CDownload const&) {}
+		virtual ~CDownload () {}
+
+		CDownload (CDownload const&) : m_nState (-1), m_nResult (0), m_pszSrc (NULL), m_pszDest (NULL), m_bProgressBar (false), m_nProgress (0), m_nProgressMax (0),
+												 m_nPercent (0), m_thread (NULL), m_nOptPercentage (0), m_nOptProgress (0) {}
 
 		CDownload& operator= (CDownload const&) { return *this; }
 
@@ -113,11 +117,11 @@ class CDownload {
 			return m_handler;
 			}
 
-		int Update (void) {
+		int32_t Update (void) {
 			Start ();
 			if (!(m_nProgress && m_nProgressMax))
 				return 1;
-			int h = int (float (m_nProgress) * 100.0f / float (m_nProgressMax));
+			int32_t h = int32_t (float (m_nProgress) * 100.0f / float (m_nProgressMax));
 			if (h == m_nPercent)
 				return 1;
 			if (h >= 100)
@@ -133,11 +137,11 @@ class CDownload {
 			}
 
 	public:
-		inline int State (void) { return m_nState; }
+		inline int32_t State (void) { return m_nState; }
 
-		inline int Result (void) { return m_nResult; }
+		inline int32_t Result (void) { return m_nResult; }
 
-		static int MenuPoll (CMenu& menu, int& key, int nCurItem, int nState) {
+		static int32_t MenuPoll (CMenu& menu, int32_t& key, int32_t nCurItem, int32_t nState) {
 			if (!nState) {
 				CDownload::Handler ()->Update ();
 				key = (CDownload::Handler ()->State () == 1) ? -2 : 0;
@@ -145,13 +149,13 @@ class CDownload {
 			return nCurItem;
 			}
 
-		virtual int Fetch (void) = 0;
+		virtual int32_t Fetch (void) = 0;
 
-		static int _CDECL_ Download (void* downloadHandler) {
+		static int32_t _CDECL_ Download (void* downloadHandler) {
 			return CDownload::Handler ()->Fetch ();
 			}
 
-		int Execute (const char* pszSrc, const char* pszDest, bool bProgressBar) {
+		int32_t Execute (const char* pszSrc, const char* pszDest, bool bProgressBar) {
 			Setup (pszSrc, pszDest, bProgressBar);
 			if (m_bProgressBar)
 				for (; m_menu.Menu (NULL, "Downloading...", &CDownload::MenuPoll) >= 0; )
@@ -170,7 +174,7 @@ class CDownload {
 				}
 			}
 
-		void SetProgress (int nProgress, int nProgressMax) {
+		void SetProgress (int32_t nProgress, int32_t nProgressMax) {
 			m_nProgress = nProgress;
 			m_nProgressMax = nProgressMax;
 			}
@@ -201,6 +205,8 @@ class CLinuxDownload : public CDownload {
 	protected:
 		CLinuxDownload () : CDownload () {}
 
+		virtual ~CLinuxDownload () {}
+
 		CLinuxDownload (CDownload const&) {}
 
 		CLinuxDownload& operator= (CLinuxDownload const&) { return *this; }
@@ -212,12 +218,12 @@ class CLinuxDownload : public CDownload {
 			return m_handler;
 			}
 
-		static int OnProgress (void *clientp, double dltotal, double dlnow, double ultotal, double ulnow) {
-			CDownload::Handler ()->SetProgress (int (dlnow), int (dltotal));
+		static int32_t OnProgress (void *clientp, double dltotal, double dlnow, double ultotal, double ulnow) {
+			CDownload::Handler ()->SetProgress (int32_t (dlnow), int32_t (dltotal));
 			return 0;
 			}
 
-		virtual int Fetch (void) {
+		virtual int32_t Fetch (void) {
 			CURL* hCurl;
 			if (!(hCurl = curl_easy_init ()))
 				return m_nResult = 1;
@@ -258,7 +264,7 @@ class CLinuxDownload : public CDownload {
 
 // ----------------------------------------------------------------------------
 
-int DownloadFile (const char* pszSrc, const char* pszDest, bool bProgressBar)
+int32_t DownloadFile (const char* pszSrc, const char* pszDest, bool bProgressBar)
 {
 return CLinuxDownload::Handler ()->Execute (pszSrc, pszDest, bProgressBar);
 }
@@ -296,11 +302,11 @@ class CWindowsDownload : public CDownload, public CDownloadCallback {
 			}
 
 		virtual HRESULT STDMETHODCALLTYPE OnProgress (ULONG ulProgress, ULONG ulProgressMax, ULONG ulResultCode, LPCWSTR szResultText) {
-			CDownload::Handler ()->SetProgress (int (ulProgress), int (ulProgressMax));
+			CDownload::Handler ()->SetProgress (int32_t (ulProgress), int32_t (ulProgressMax));
 			return S_OK;
 			}
 
-		virtual int Fetch (void) {
+		virtual int32_t Fetch (void) {
 			m_nResult = URLDownloadToFile (NULL, m_pszSrc, m_pszDest, NULL, (CWindowsDownload*) Handler ());
 			m_nState = 1;
 			return m_nResult;
@@ -309,7 +315,7 @@ class CWindowsDownload : public CDownload, public CDownloadCallback {
 
 // ----------------------------------------------------------------------------
 
-int DownloadFile (const char* pszSrc, const char* pszDest, bool bProgressBar)
+int32_t DownloadFile (const char* pszSrc, const char* pszDest, bool bProgressBar)
 {
 return CWindowsDownload::Handler ()->Execute (pszSrc, pszDest, bProgressBar);
 }
@@ -320,11 +326,11 @@ return CWindowsDownload::Handler ()->Execute (pszSrc, pszDest, bProgressBar);
 
 #if defined(_WIN32) || defined(__unix__)
 
-int CheckForUpdate (void)
+int32_t CheckForUpdate (void)
 {
 	char		szSrc [FILENAME_LEN], szDest [FILENAME_LEN];
 	CFile		cf;
-	int		nVersion [3], nLocation;
+	int32_t		nVersion [3], nLocation;
 	char		szMsg [1000];
 
 	static const char* pszSource [2] = {
@@ -336,54 +342,55 @@ int CheckForUpdate (void)
 #endif
 	};
 
-sprintf (szDest, "%s/d2x-xl-version.txt", gameFolders.szDownloadDir);
+sprintf (szDest, "%sd2x-xl-version.txt", gameFolders.var.szDownloads);
 if (!DownloadFile ("http://www.descent2.de/files/d2x-xl-version.txt", szDest, false))
 	nLocation = 0;
-else if (!DownloadFile ("http://sourceforge.net/projects/d2x-xl/files/d2x-xl-version.txt/download", szDest, false))
+else if (!DownloadFile ("http://sourceforge.net/projects/d2x-xl/files/d2x-xl-version.txt", szDest, false))
 	nLocation = 1;
 else {
-	MsgBox (TXT_ERROR, NULL, 1, TXT_CLOSE, TXT_DOWNLOAD_FAILED);
+	InfoBox (TXT_ERROR, NULL, BG_STANDARD, 1, TXT_CLOSE, TXT_DOWNLOAD_FAILED);
 	return -1;
 	}
 G3_SLEEP (1000);
-if (!cf.Open ("d2x-xl-version.txt", gameFolders.szDownloadDir, "rb", -1)) {
-	MsgBox (TXT_ERROR, NULL, 1, TXT_CLOSE, TXT_DOWNLOAD_FAILED);
+if (!cf.Open ("d2x-xl-version.txt", gameFolders.var.szDownloads, "rb", -1)) {
+	InfoBox (TXT_ERROR, NULL, BG_STANDARD, 1, TXT_CLOSE, TXT_DOWNLOAD_FAILED);
+
 	return -1;
 	}
 if (3 != fscanf (cf.File (), "%d.%d.%d", &nVersion [0], &nVersion [1], &nVersion [2])) {
-	MsgBox (TXT_ERROR, NULL, 1, TXT_CLOSE, TXT_DOWNLOAD_FAILED);
+	InfoBox (TXT_ERROR, NULL, BG_STANDARD, 1, TXT_CLOSE, TXT_DOWNLOAD_FAILED);
 	return -1;
 	}
-
-#if !DBG
 if (D2X_IVER >= nVersion [0] * 100000 + nVersion [1] * 1000 + nVersion [2]) {
-	MsgBox (NULL, NULL, 1, TXT_CLOSE, TXT_NO_UPDATE_FOUND);
+	TextBox (NULL, BG_STANDARD, 1, TXT_CLOSE, TXT_NO_UPDATE_FOUND);
 	return 0;
 	}
-#endif
 
-if (MsgBox (NULL, NULL, 2, TXT_YES, TXT_NO, TXT_UPDATE_FOUND))
+if (InfoBox (NULL, NULL,  BG_STANDARD, 2, TXT_YES, TXT_NO, TXT_UPDATE_FOUND))
 	return 0;
-sprintf (szDest, "%s/d2x-xl-%s-%d.%d.%d.%s", gameFolders.szDownloadDir,
+sprintf (szDest, "%sd2x-xl-%s-%d.%d.%d.%s", gameFolders.var.szDownloads,
 			FILETYPE, nVersion [0], nVersion [1], nVersion [2], FILEEXT);
 #if 1
 messageBox.Show ("Downloading...");
 sprintf (szSrc, "%s/d2x-xl-%s-%d.%d.%d.%s", pszSource [nLocation], FILETYPE, nVersion [0], nVersion [1], nVersion [2], FILEEXT);
 if (DownloadFile (szSrc, szDest, true)) {
 	messageBox.Clear ();
-	MsgBox (TXT_ERROR, NULL, 1, TXT_CLOSE, TXT_DOWNLOAD_FAILED);
+	InfoBox (TXT_ERROR, NULL, BG_STANDARD, 1, TXT_CLOSE, TXT_DOWNLOAD_FAILED);
 	return -1;
 	}
 messageBox.Clear ();
 if (!cf.Exist (szDest, "", 0)) {
-	MsgBox (TXT_ERROR, NULL, 1, TXT_CLOSE, TXT_DOWNLOAD_FAILED);
+	InfoBox (TXT_ERROR, NULL, BG_STANDARD, 1, TXT_CLOSE, TXT_DOWNLOAD_FAILED);
 	return -1;
 	}
 #endif
 #if defined(__unix__)
 sprintf (szMsg, TXT_DOWNLOAD_SUCCEEDED, szDest);
-MsgBox (NULL, NULL, 1, TXT_CLOSE, szMsg);
+TextBox (NULL, BG_STANDARD, 1, TXT_CLOSE, szMsg);
 #else
+#	ifdef WIN32
+	SetCurrentDirectory (gameFolders.game.szRoot);
+#	endif
 #	if 1
 #	include "shellapi.h"
 #	include "objbase.h"
@@ -401,7 +408,7 @@ if (0 <= _execv (szDest, args))
 #endif
 sprintf (szMsg, TXT_PATCH_FAILED, szDest);
 //Warning (szMsg);
-MsgBox (TXT_ERROR, NULL, 1, TXT_CLOSE, szMsg);
+InfoBox (TXT_ERROR, (pMenuCallback) NULL, BG_STANDARD, 1, TXT_CLOSE, szMsg);
 #endif
 return -1;
 }

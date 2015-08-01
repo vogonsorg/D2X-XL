@@ -46,12 +46,13 @@
 
 //------------------------------------------------------------------------------
 
-CFixVector CObject::RegisterHit (CFixVector vHit, short nModel)
+CFixVector CObject::RegisterHit (CFixVector vHit, int16_t nModel)
 {
+ENTER (0, 0);
 if (gameStates.app.bNostalgia)
-	return vHit;
+	RETVAL (vHit)
 if ((info.nType != OBJ_ROBOT) && (info.nType != OBJ_PLAYER) && (info.nType != OBJ_REACTOR))
-	return vHit;
+	RETVAL (vHit)
 
 #if 0 //DBG
 HUDMessage (0, "set hit point %d,%d,%d", vHit [0], vHit [1], vHit [2]);
@@ -85,24 +86,24 @@ if (EGI_FLAG (nDamageModel, 0, 0, 0) && (gameStates.app.nSDLTicks [0] > m_damage
 #endif
 		m_damage.tCritical = gameStates.app.nSDLTicks [0];
 		m_damage.nCritical++;
-		return vHit;
+		RETVAL (vHit)
 		}
 	}
 
 // avoid the shield effect lighting up to soon after a critical hit
 #if 1
 if (gameStates.app.nSDLTicks [0] - m_damage.tCritical < SHIELD_EFFECT_TIME / 4)
-	return vHit;
+	RETVAL (vHit)
 #else
 if ((gameStates.app.nSDLTicks [0] - m_damage.tShield < SHIELD_EFFECT_TIME * 2) &&
 	 (gameStates.app.nSDLTicks [0] - m_damage.tCritical < SHIELD_EFFECT_TIME / 4))
-	return vHit;
+	RETVAL (vHit)
 #endif
 
 vHit = vDir * info.xSize;
 m_damage.tShield = gameStates.app.nSDLTicks [0];
 
-for (int i = 0; i < 3; i++)
+for (int32_t i = 0; i < 3; i++)
 #if 1
 #	if 0
 	if (CFixVector::Dot (m_hitInfo.dir [i], vHit) > I2X (1) - I2X (1) / 32) {
@@ -120,7 +121,7 @@ for (int i = 0; i < 3; i++)
 m_hitInfo.v [m_hitInfo.i] = vHit;
 m_hitInfo.t [m_hitInfo.i] = gameStates.app.nSDLTicks [0];
 m_hitInfo.i = (m_hitInfo.i + 1) % 3;
-return m_hitInfo.v [m_hitInfo.i];
+RETVAL (m_hitInfo.v [m_hitInfo.i])
 }
 
 //------------------------------------------------------------------------------
@@ -136,7 +137,7 @@ m_damage.nCritical = 0;
 
 	bool bReset = false;
 
-for (int i = 0; i < 3; i++)
+for (int32_t i = 0; i < 3; i++)
 	if (ResetDamage (i))
 		bReset = true;
 return bReset;
@@ -165,7 +166,7 @@ return 1.0f - 0.25f / fShieldScale;
 
 //------------------------------------------------------------------------------
 
-bool CObject::RepairDamage (int i)
+bool CObject::RepairDamage (int32_t i)
 {
 if (!m_damage.nHits [i])
 	return false;
@@ -186,18 +187,18 @@ if ((info.nType != OBJ_PLAYER) && (info.nType != OBJ_ROBOT) && (info.nType != OB
 	return;
 if (gameStates.app.nSDLTicks [0] - m_damage.tRepaired < REPAIR_DELAY)
 	return;
-for (int i = 0; i < 3; i++)
+for (int32_t i = 0; i < 3; i++)
 	RepairDamage (i);
 }
 
 //------------------------------------------------------------------------------
 
-fix CObject::SubSystemDamage (int i)
+fix CObject::SubSystemDamage (int32_t i)
 {
 	fix	nHits;
 
 return (!gameStates.app.bNostalgia && EGI_FLAG (nDamageModel, 0, 0, 0) && (nHits = m_damage.nHits [i])) 
-		 ? fix ((I2X (1) / 2) * pow (DamageRate (), nHits) + 0.5f) 
+		 ? (fix) FRound ((I2X (1) / 2) * pow (DamageRate (), nHits)) 
 		 : I2X (1) / 2;
 }
 

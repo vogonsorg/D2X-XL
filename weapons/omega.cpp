@@ -22,11 +22,11 @@
 #define OMEGA_ENERGY_RATE		(I2X (190) / 17)
 //	Note, you don't need to change these constants.  You can control damage and energy consumption by changing the
 //	usual bitmaps.tbl parameters.
-#define	OMEGA_DAMAGE_SCALE			32				//	Controls how much damage is done.  This gets multiplied by gameData.time.xFrame and then again by the damage specified in bitmaps.tbl in the $WEAPON line.
-#define	OMEGA_ENERGY_CONSUMPTION	16				//	Controls how much energy is consumed.  This gets multiplied by gameData.time.xFrame and then again by the energy parameter from bitmaps.tbl.
+#define	OMEGA_DAMAGE_SCALE			32				//	Controls how much damage is done.  This gets multiplied by gameData.timeData.xFrame and then again by the damage specified in bitmaps.tbl in the $WEAPON line.
+#define	OMEGA_ENERGY_CONSUMPTION	16				//	Controls how much energy is consumed.  This gets multiplied by gameData.timeData.xFrame and then again by the energy parameter from bitmaps.tbl.
 
 #define	MIN_OMEGA_CHARGE	 (DEFAULT_MAX_OMEGA_CHARGE/8)
-#define	OMEGA_CHARGE_SCALE	4			//	gameData.time.xFrame / OMEGA_CHARGE_SCALE added to gameData.omega.xCharge [IsMultiGame] every frame.
+#define	OMEGA_CHARGE_SCALE	4			//	gameData.timeData.xFrame / OMEGA_CHARGE_SCALE added to gameData.omegaData.xCharge [IsMultiGame] every frame.
 
 // ---------------------------------------------------------------------------------
 
@@ -43,49 +43,49 @@ return xEnergyUsed;
 }
 
 // ---------------------------------------------------------------------------------
-//	*objP is the CObject firing the omega cannon
+//	*pObj is the CObject firing the omega cannon
 //	*pos is the location from which the omega bolt starts
 
-int nOmegaDuration [7] = {1, 2, 3, 5, 7, 10, 15};
+int32_t nOmegaDuration [7] = {1, 2, 3, 5, 7, 10, 15};
 
 void SetMaxOmegaCharge (void)
 {
-gameData.omega.xMaxCharge = DEFAULT_MAX_OMEGA_CHARGE * nOmegaDuration [int (extraGameInfo [0].nOmegaRamp)];
-if (gameData.omega.xCharge [IsMultiGame] > gameData.omega.xMaxCharge) {
-	LOCALPLAYER.UpdateEnergy (OmegaEnergy (gameData.omega.xCharge [IsMultiGame] - gameData.omega.xMaxCharge));
-	gameData.omega.xCharge [IsMultiGame] = gameData.omega.xMaxCharge;
+gameData.omegaData.xMaxCharge = DEFAULT_MAX_OMEGA_CHARGE * nOmegaDuration [int32_t (extraGameInfo [0].nOmegaRamp)];
+if (gameData.omegaData.xCharge [IsMultiGame] > gameData.omegaData.xMaxCharge) {
+	LOCALPLAYER.UpdateEnergy (OmegaEnergy (gameData.omegaData.xCharge [IsMultiGame] - gameData.omegaData.xMaxCharge));
+	gameData.omegaData.xCharge [IsMultiGame] = gameData.omegaData.xMaxCharge;
 	}
 }
 
 //	-------------------------------------------------------------------------------------------------------------------------------
 
-void DeleteOldOmegaBlobs (CObject *parentObjP)
+void DeleteOldOmegaBlobs (CObject *pParentObj)
 {
-	int		nParentObj = parentObjP->cType.laserInfo.parent.nObject;
-	CObject	*objP;
+	int32_t	nParentObj = pParentObj->cType.laserInfo.parent.nObject;
+	CObject*	pObj;
 
-FORALL_WEAPON_OBJS (objP, i)
-	if ((objP->info.nId == OMEGA_ID) && (objP->cType.laserInfo.parent.nObject == nParentObj))
-		ReleaseObject (objP->Index ());
+FORALL_WEAPON_OBJS (pObj)
+	if ((pObj->info.nId == OMEGA_ID) && (pObj->cType.laserInfo.parent.nObject == nParentObj))
+		ReleaseObject (pObj->Index ());
 }
 
 // ---------------------------------------------------------------------------------
 
-void CreateOmegaBlobs (short nFiringSeg, CFixVector *vMuzzle, CFixVector *vTargetPos, CObject *parentObjP, CObject *targetObjP)
+void CreateOmegaBlobs (int16_t nFiringSeg, CFixVector *vMuzzle, CFixVector *vTargetPos, CObject *pParentObj, CObject *pTargetObj)
 {
-	short			nLastSeg, nLastCreatedObj = -1;
+	int16_t		nLastSeg, nLastCreatedObj = -1;
 	CFixVector	vGoal;
 	fix			xGoalDist;
-	int			nOmegaBlobs;
+	int32_t		nOmegaBlobs;
 	fix			xOmegaBlobDist;
 	CFixVector	vOmegaDelta;
 	CFixVector	vBlobPos, vPerturb;
 	fix			xPerturbArray [MAX_OMEGA_BLOBS];
-	int			i;
+	int32_t		i;
 
 if (IsMultiGame)
-	DeleteOldOmegaBlobs (parentObjP);
-omegaLightning.Create (vTargetPos, parentObjP, targetObjP);
+	DeleteOldOmegaBlobs (pParentObj);
+omegaLightning.Create (vTargetPos, pParentObj, pTargetObj);
 vGoal = *vTargetPos - *vMuzzle;
 xGoalDist = CFixVector::Normalize (vGoal);
 if (xGoalDist < MIN_OMEGA_BLOBS * MIN_OMEGA_DIST) {
@@ -127,10 +127,10 @@ else {
 
 //	Create Random perturbation vector, but favor _not_ going up in CPlayerData's reference.
 vPerturb = CFixVector::Random ();
-vPerturb += parentObjP->info.position.mOrient.m.dir.u * (-I2X (1) / 2);
+vPerturb += pParentObj->info.position.mOrient.m.dir.u * (-I2X (1) / 2);
 for (i = 0; i < nOmegaBlobs; i++) {
 	CFixVector	vTempPos;
-	short			nBlobObj, nSegment;
+	int16_t		nBlobObj, nSegment;
 
 	//	This will put the last blob right at the destination CObject, causing damage.
 	if (i == nOmegaBlobs - 1)
@@ -145,33 +145,33 @@ for (i = 0; i < nOmegaBlobs; i++) {
 	vTempPos = vBlobPos + vPerturb * xPerturbArray[i];
 	nSegment = FindSegByPos (vTempPos, nLastSeg, 1, 0);
 	if (nSegment != -1) {
-		CObject		*objP;
+		CObject		*pObj;
 
 		nLastSeg = nSegment;
 		nBlobObj = CreateWeapon (OMEGA_ID, -1, nSegment, vTempPos, 0, RT_WEAPON_VCLIP);
 		if (nBlobObj == -1)
 			break;
 		nLastCreatedObj = nBlobObj;
-		objP = OBJECTS + nBlobObj;
-		objP->SetLife (ONE_FRAME_TIME);
-		objP->mType.physInfo.velocity = vGoal;
+		pObj = OBJECT (nBlobObj);
+		pObj->SetLife (ONE_FRAME_TIME);
+		pObj->mType.physInfo.velocity = vGoal;
 		//	Only make the last one move fast, else multiple blobs might collide with target.
-		objP->mType.physInfo.velocity *= (I2X (4));
-		objP->SetSize (gameData.weapons.info [objP->info.nId].blob_size);
-		objP->info.xShield = FixMul (OMEGA_DAMAGE_SCALE * gameData.time.xFrame, WI_strength (objP->info.nId, gameStates.app.nDifficultyLevel));
-		objP->cType.laserInfo.parent.nType = parentObjP->info.nType;
-		objP->cType.laserInfo.parent.nSignature = parentObjP->info.nSignature;
-		objP->cType.laserInfo.parent.nObject = OBJ_IDX (parentObjP);
-		objP->info.movementType = MT_NONE;	//	Only last one moves, that will get bashed below.
+		pObj->mType.physInfo.velocity *= (I2X (4));
+		pObj->SetSize (WI_BlobSize (pObj->info.nId));
+		pObj->info.xShield = FixMul (OMEGA_DAMAGE_SCALE * gameData.timeData.xFrame, WI_Strength (pObj->info.nId, gameStates.app.nDifficultyLevel));
+		pObj->cType.laserInfo.parent.nType = pParentObj->info.nType;
+		pObj->cType.laserInfo.parent.nSignature = pParentObj->info.nSignature;
+		pObj->cType.laserInfo.parent.nObject = OBJ_IDX (pParentObj);
+		pObj->info.movementType = MT_NONE;	//	Only last one moves, that will get bashed below.
 		}
 	vBlobPos += vOmegaDelta;
 	}
 
 	//	Make last one move faster, but it's already moving at speed = I2X (4).
 if (nLastCreatedObj != -1) {
-	OBJECTS [nLastCreatedObj].mType.physInfo.velocity *=
-		gameData.weapons.info [OMEGA_ID].speed [gameStates.app.nDifficultyLevel] / 4;
-	OBJECTS [nLastCreatedObj].info.movementType = MT_PHYSICS;
+	CObject* pObj = OBJECT (nLastCreatedObj);
+	pObj->mType.physInfo.velocity *= WI_Speed (OMEGA_ID, gameStates.app.nDifficultyLevel) / 4;
+	pObj->info.movementType = MT_PHYSICS;
 	}
 }
 
@@ -181,7 +181,7 @@ void OmegaChargeFrame (void)
 {
 	fix	xOldOmegaCharge;
 
-if (gameData.omega.xCharge [IsMultiGame] == MAX_OMEGA_CHARGE) {
+if (gameData.omegaData.xCharge [IsMultiGame] == MAX_OMEGA_CHARGE) {
 	omegaLightning.Destroy (LOCALPLAYER.nObject);
 	return;
 	}
@@ -193,23 +193,23 @@ if (gameStates.app.bPlayerIsDead) {
 	omegaLightning.Destroy (LOCALPLAYER.nObject);
 	return;
 	}
-if ((gameData.weapons.nPrimary == OMEGA_INDEX) && !gameData.omega.xCharge [IsMultiGame] && !LOCALPLAYER.Energy ()) {
+if ((gameData.weaponData.nPrimary == OMEGA_INDEX) && !gameData.omegaData.xCharge [IsMultiGame] && !LOCALPLAYER.Energy ()) {
 	omegaLightning.Destroy (LOCALPLAYER.nObject);
-	gameData.weapons.nPrimary--;
+	gameData.weaponData.nPrimary--;
 	AutoSelectWeapon (0, 1);
 	}
 //	Don't charge while firing.
-if ((gameData.omega.nLastFireFrame == gameData.app.nFrameCount) ||
-	 (gameData.omega.nLastFireFrame == gameData.app.nFrameCount - 1))
+if ((gameData.omegaData.nLastFireFrame == gameData.appData.nFrameCount) ||
+	 (gameData.omegaData.nLastFireFrame == gameData.appData.nFrameCount - 1))
 	return;
 
 omegaLightning.Destroy (LOCALPLAYER.nObject);
 if (LOCALPLAYER.Energy ()) {
-	xOldOmegaCharge = gameData.omega.xCharge [IsMultiGame];
-	gameData.omega.xCharge [IsMultiGame] += (fix) (gameData.time.xFrame / OMEGA_CHARGE_SCALE / gameStates.gameplay.slowmo [0].fSpeed);
-	if (gameData.omega.xCharge [IsMultiGame] > MAX_OMEGA_CHARGE)
-		gameData.omega.xCharge [IsMultiGame] = MAX_OMEGA_CHARGE;
-	LOCALPLAYER.UpdateEnergy (-OmegaEnergy (gameData.omega.xCharge [IsMultiGame] - xOldOmegaCharge));
+	xOldOmegaCharge = gameData.omegaData.xCharge [IsMultiGame];
+	gameData.omegaData.xCharge [IsMultiGame] += (fix) (gameData.timeData.xFrame / OMEGA_CHARGE_SCALE / gameStates.gameplay.slowmo [0].fSpeed);
+	if (gameData.omegaData.xCharge [IsMultiGame] > MAX_OMEGA_CHARGE)
+		gameData.omegaData.xCharge [IsMultiGame] = MAX_OMEGA_CHARGE;
+	LOCALPLAYER.UpdateEnergy (-OmegaEnergy (gameData.omegaData.xCharge [IsMultiGame] - xOldOmegaCharge));
 	}
 }
 
@@ -217,37 +217,37 @@ if (LOCALPLAYER.Energy ()) {
 
 // ---------------------------------------------------------------------------------
 
-void DoOmegaStuff (CObject *parentObjP, CFixVector *vMuzzle, CObject *weaponObjP)
+void DoOmegaStuff (CObject *pParentObj, CFixVector *vMuzzle, CObject *pWeaponObj)
 {
-	short			nTargetObj, nFiringSeg, nParentSeg;
+	int16_t		nTargetObj, nFiringSeg, nParentSeg;
 	CFixVector	vTargetPos;
-	int			nPlayer = (parentObjP->info.nType == OBJ_PLAYER) ? parentObjP->info.nId : -1;
-	int			bSpectate = SPECTATOR (parentObjP);
-	static		int nDelay = 0;
+	int32_t		nPlayer = (pParentObj && (pParentObj->info.nType == OBJ_PLAYER)) ? pParentObj->info.nId : -1;
+	int32_t		bSpectate = SPECTATOR (pParentObj);
+	static		int32_t nDelay = 0;
 
 #if 1
-if (gameStates.gameplay.bMineMineCheat && (gameData.omega.xCharge [IsMultiGame] < MAX_OMEGA_CHARGE))
-	gameData.omega.xCharge [IsMultiGame] = MAX_OMEGA_CHARGE - 1;
+if (gameStates.gameplay.bMineMineCheat && (gameData.omegaData.xCharge [IsMultiGame] < MAX_OMEGA_CHARGE))
+	gameData.omegaData.xCharge [IsMultiGame] = MAX_OMEGA_CHARGE - 1;
 #endif
 if (nPlayer == N_LOCALPLAYER) {
 	//	If charge >= min, or (some charge and zero energy), allow to fire.
-	if (((RandShort () > parentObjP->GunDamage ()) || (gameData.omega.xCharge [IsMultiGame] < MIN_OMEGA_CHARGE)) &&
-		 (!gameData.omega.xCharge [IsMultiGame] || gameData.multiplayer.players [nPlayer].energy)) {
-		ReleaseObject (OBJ_IDX (weaponObjP));
+	if (((RandShort () > pParentObj->GunDamage ()) || (gameData.omegaData.xCharge [IsMultiGame] < MIN_OMEGA_CHARGE)) &&
+		 (!gameData.omegaData.xCharge [IsMultiGame] || PLAYER (nPlayer).energy)) {
+		ReleaseObject (OBJ_IDX (pWeaponObj));
 		omegaLightning.Destroy (LOCALPLAYER.nObject);
 		return;
 		}
-	gameData.omega.xCharge [IsMultiGame] -= gameData.time.xFrame;
-	if (gameData.omega.xCharge [IsMultiGame] < 0)
-		gameData.omega.xCharge [IsMultiGame] = 0;
+	gameData.omegaData.xCharge [IsMultiGame] -= gameData.timeData.xFrame;
+	if (gameData.omegaData.xCharge [IsMultiGame] < 0)
+		gameData.omegaData.xCharge [IsMultiGame] = 0;
 	//	Ensure that the lightning cannon can be fired next frame.
-	gameData.laser.xNextFireTime = gameData.time.xGame + 1;
-	gameData.omega.nLastFireFrame = gameData.app.nFrameCount;
+	gameData.laserData.xNextFireTime = gameData.timeData.xGame + 1;
+	gameData.omegaData.nLastFireFrame = gameData.appData.nFrameCount;
 	}
 
-weaponObjP->cType.laserInfo.parent.nType = parentObjP->info.nType;
-weaponObjP->cType.laserInfo.parent.nObject = OBJ_IDX (parentObjP);
-weaponObjP->cType.laserInfo.parent.nSignature = parentObjP->info.nSignature;
+pWeaponObj->cType.laserInfo.parent.nType = pParentObj->info.nType;
+pWeaponObj->cType.laserInfo.parent.nObject = pParentObj ? OBJ_IDX (pParentObj) : -1;
+pWeaponObj->cType.laserInfo.parent.nSignature = pParentObj->info.nSignature;
 
 if (gameStates.limitFPS.bOmega && !gameStates.app.tick40fps.bTick)
 #if 1
@@ -264,33 +264,34 @@ if (SlowMotionActive ()) {
 	nTargetObj = -1;
 else
 #endif
-	nTargetObj = weaponObjP->FindVisibleHomingTarget (*vMuzzle);
-nParentSeg = bSpectate ? gameStates.app.nPlayerSegment : parentObjP->info.nSegment;
+	nTargetObj = pWeaponObj->FindVisibleHomingTarget (*vMuzzle, MAX_THREADS);
+nParentSeg = bSpectate ? gameStates.app.nPlayerSegment : pParentObj->info.nSegment;
 
 if (0 > (nFiringSeg = FindSegByPos (*vMuzzle, nParentSeg, 1, 0))) {
-	omegaLightning.Destroy (OBJ_IDX (parentObjP));
+	omegaLightning.Destroy (OBJ_IDX (pParentObj));
 	return;
 	}
 //	Play sound.
-if (parentObjP == gameData.objs.viewerP)
-	audio.PlaySound (gameData.weapons.info [weaponObjP->info.nId].flashSound);
-else
-	audio.CreateSegmentSound (gameData.weapons.info [weaponObjP->info.nId].flashSound,
-									  weaponObjP->info.nSegment, 0, weaponObjP->info.position.vPos, 0, I2X (1));
+CWeaponInfo *pWeaponInfo = WEAPONINFO (pWeaponObj);
+if (pWeaponInfo) {
+	if (pParentObj == gameData.objData.pViewer)
+		audio.PlaySound (pWeaponInfo->flashSound);
+	else
+		audio.CreateSegmentSound (pWeaponInfo->flashSound, pWeaponObj->info.nSegment, 0, pWeaponObj->info.position.vPos, 0, I2X (1));
+	}
 //	Delete the original CObject.  Its only purpose in life was to determine which CObject to home in on.
-ReleaseObject (OBJ_IDX (weaponObjP));
+ReleaseObject (OBJ_IDX (pWeaponObj));
 if (nTargetObj != -1)
-	vTargetPos = OBJECTS [nTargetObj].info.position.vPos;
+	vTargetPos = OBJECT (nTargetObj)->info.position.vPos;
 else {	//	If couldn't lock on anything, fire straight ahead.
 	CFixVector	vPerturb, perturbed_fvec;
 
 	vPerturb = CFixVector::Random();
-	perturbed_fvec = bSpectate ? gameStates.app.playerPos.mOrient.m.dir.f : parentObjP->info.position.mOrient.m.dir.f
-	               + vPerturb * (I2X (1) / 16);
+	perturbed_fvec = bSpectate ? gameStates.app.playerPos.mOrient.m.dir.f : pParentObj->info.position.mOrient.m.dir.f + vPerturb * (I2X (1) / 16);
 	vTargetPos = *vMuzzle + perturbed_fvec * MAX_OMEGA_DIST;
-	CHitQuery	hitQuery (FQ_IGNORE_POWERUPS | FQ_TRANSPOINT | FQ_CHECK_OBJS, vMuzzle, &vTargetPos, nFiringSeg, OBJ_IDX (parentObjP), 0, 0, ++gameData.physics.bIgnoreObjFlag);
+	CHitQuery	hitQuery (FQ_IGNORE_POWERUPS | FQ_TRANSPOINT | FQ_CHECK_OBJS, vMuzzle, &vTargetPos, nFiringSeg, OBJ_IDX (pParentObj), 0, 0, ++gameData.physicsData.bIgnoreObjFlag);
 	CHitResult	hitResult;
-	int fate = FindHitpoint (hitQuery, hitResult);
+	int32_t fate = FindHitpoint (hitQuery, hitResult);
 	if (fate != HIT_NONE) {
 		if (hitResult.nSegment != -1)		//	How can this be?  We went from inside the mine to outside without hitting anything?
 			vTargetPos = hitResult.vPoint;
@@ -303,7 +304,7 @@ else {	//	If couldn't lock on anything, fire straight ahead.
 		}
 	}
 //	This is where we create a pile of omega blobs!
-CreateOmegaBlobs (nFiringSeg, vMuzzle, &vTargetPos, parentObjP, (nTargetObj < 0) ? NULL : OBJECTS + nTargetObj);
+CreateOmegaBlobs (nFiringSeg, vMuzzle, &vTargetPos, pParentObj, (nTargetObj < 0) ? NULL : OBJECT (nTargetObj));
 }
 
 // ---------------------------------------------------------------------------------

@@ -46,72 +46,76 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 // Resets all fuel center info
 void ResetGenerators (void)
 {
-	int i;
+ENTER (0, 0);
+	int32_t i;
 
 for (i = 0; i < LEVEL_SEGMENTS; i++)
-	SEGMENTS [i].m_function = SEGMENT_FUNC_NONE;
-gameData.producers.nProducers = 0;
-gameData.producers.nRobotMakers = 0;
-gameData.producers.nEquipmentMakers = 0;
-gameData.producers.nRepairCenters = 0;
+	SEGMENT (i)->m_function = SEGMENT_FUNC_NONE;
+gameData.producerData.nProducers = 0;
+gameData.producerData.nRobotMakers = 0;
+gameData.producerData.nEquipmentMakers = 0;
+gameData.producerData.nRepairCenters = 0;
+RETURN
 }
 
 //------------------------------------------------------------
 // Turns a CSegment into a fully charged up fuel center...
-bool CSegment::CreateProducer (int nOldFunction)
+bool CSegment::CreateProducer (int32_t nOldFunction)
 {
+ENTER (0, 0);
 if ((m_function != SEGMENT_FUNC_FUELCENTER) &&
 	 (m_function != SEGMENT_FUNC_REPAIRCENTER) &&
 	 (m_function != SEGMENT_FUNC_REACTOR) &&
 	 (m_function != SEGMENT_FUNC_ROBOTMAKER) &&
 	 (m_function != SEGMENT_FUNC_EQUIPMAKER)) {
 	PrintLog (0, "Segment %d has invalid function %d in producers.cpp\n", Index (), m_function);
-	return false;
+	RETVAL (false)
 	}
 
 if (!CreateObjectProducer (nOldFunction, MAX_FUEL_CENTERS))
-	return false;
+	RETVAL (false)
 
 if (nOldFunction == SEGMENT_FUNC_EQUIPMAKER) {
-	gameData.producers.origProducerTypes [m_value] = SEGMENT_FUNC_NONE;
-	if (m_nObjProducer < --gameData.producers.nEquipmentMakers) {
-		gameData.producers.equipmentMakers [m_nObjProducer] = gameData.producers.equipmentMakers [gameData.producers.nEquipmentMakers];
-		SEGMENTS [gameData.producers.equipmentMakers [gameData.producers.nEquipmentMakers].nSegment].m_nObjProducer = m_nObjProducer;
+	gameData.producerData.origProducerTypes [m_value] = SEGMENT_FUNC_NONE;
+	if (m_nObjProducer < --gameData.producerData.nEquipmentMakers) {
+		gameData.producerData.equipmentMakers [m_nObjProducer] = gameData.producerData.equipmentMakers [gameData.producerData.nEquipmentMakers];
+		SEGMENT (gameData.producerData.equipmentMakers [gameData.producerData.nEquipmentMakers].nSegment)->m_nObjProducer = m_nObjProducer;
 		m_nObjProducer = -1;
 		}
 	}
 else if (nOldFunction == SEGMENT_FUNC_ROBOTMAKER) {
-	gameData.producers.origProducerTypes [m_value] = SEGMENT_FUNC_NONE;
-	if (m_nObjProducer < --gameData.producers.nRobotMakers) {
-		gameData.producers.robotMakers [m_nObjProducer] = gameData.producers.robotMakers [gameData.producers.nRobotMakers];
-		SEGMENTS [gameData.producers.robotMakers [gameData.producers.nRobotMakers].nSegment].m_nObjProducer = m_nObjProducer;
+	gameData.producerData.origProducerTypes [m_value] = SEGMENT_FUNC_NONE;
+	if (m_nObjProducer < --gameData.producerData.nRobotMakers) {
+		gameData.producerData.robotMakers [m_nObjProducer] = gameData.producerData.robotMakers [gameData.producerData.nRobotMakers];
+		SEGMENT (gameData.producerData.robotMakers [gameData.producerData.nRobotMakers].nSegment)->m_nObjProducer = m_nObjProducer;
 		m_nObjProducer = -1;
 		}
 	}
-return true;
+RETVAL (true)
 }
 
 //------------------------------------------------------------
 
-bool CSegment::CreateObjectProducer (int nOldFunction, int nMaxCount)
+bool CSegment::CreateObjectProducer (int32_t nOldFunction, int32_t nMaxCount)
 {
+ENTER (0, 0);
 if ((nMaxCount > 0) && (m_nObjProducer >= nMaxCount)) {
 	m_function = SEGMENT_FUNC_NONE;
 	m_nObjProducer = -1;
-	return false;
+	RETVAL (false)
 	}
 
 if ((nOldFunction != SEGMENT_FUNC_FUELCENTER) && 
 	 (nOldFunction != SEGMENT_FUNC_REPAIRCENTER) && 
 	 (nOldFunction != SEGMENT_FUNC_ROBOTMAKER) && 
 	 (nOldFunction != SEGMENT_FUNC_EQUIPMAKER)) {
-	if (gameData.producers.nProducers >= MAX_FUEL_CENTERS)
-		return false;
-	m_value = gameData.producers.nProducers++; // hasn't already been a producer, so allocate a new one
+	if (gameData.producerData.nProducers >= MAX_FUEL_CENTERS)
+		RETVAL (false)
+	m_value = gameData.producerData.nProducers++; // hasn't already been a producer, so allocate a new one
 	}
 
-gameData.producers.origProducerTypes [m_value] = (nOldFunction == m_function) ? SEGMENT_FUNC_NONE : nOldFunction;
-tProducerInfo& producer = gameData.producers.producers [m_value];
+gameData.producerData.origProducerTypes [m_value] = (nOldFunction == m_function) ? SEGMENT_FUNC_NONE : nOldFunction;
+tProducerInfo& producer = gameData.producerData.producers [m_value];
 producer.nType = m_function;
 producer.xMaxCapacity = 
 producer.xCapacity = I2X (gameStates.app.nDifficultyLevel + 3);
@@ -119,72 +123,77 @@ producer.nSegment = Index ();
 producer.xTimer = -1;
 producer.bFlag = (m_function == SEGMENT_FUNC_ROBOTMAKER) ? 1 : (m_function == SEGMENT_FUNC_EQUIPMAKER) ? 2 : 0;
 producer.vCenter = m_vCenter;
-return true;
+RETVAL (true)
 }
 
 //------------------------------------------------------------
-// Adds a producer that already is a special type into the gameData.producers.producers array.
+// Adds a producer that already is a special type into the gameData.producerData.producers array.
 // This function is separate from other producers because we don't want values reset.
-bool CSegment::CreateRobotMaker (int nOldFunction)
+bool CSegment::CreateRobotMaker (int32_t nOldFunction)
 {
-m_nObjProducer = gameData.producers.nRobotMakers;
+ENTER (0, 0);
+m_nObjProducer = gameData.producerData.nRobotMakers;
 if (!CreateObjectProducer (nOldFunction, gameFileInfo.botGen.count))
-	return false;
-++gameData.producers.nRobotMakers;
-tObjectProducerInfo& producer = gameData.producers.robotMakers [m_nObjProducer];
+	RETVAL (false)
+++gameData.producerData.nRobotMakers;
+tObjectProducerInfo& producer = gameData.producerData.robotMakers [m_nObjProducer];
 producer.xHitPoints = OBJ_PRODUCER_HP_DEFAULT;
 producer.xInterval = OBJ_PRODUCER_INTERVAL_DEFAULT;
 producer.nSegment = Index ();
 producer.nProducer = m_value;
 producer.bAssigned = false;
-return true;
+RETVAL (true)
 }
 
 
 //------------------------------------------------------------
-// Adds a producer that already is a special type into the gameData.producers.producers array.
+// Adds a producer that already is a special type into the gameData.producerData.producers array.
 // This function is separate from other producers because we don't want values reset.
-bool CSegment::CreateEquipmentMaker (int nOldFunction)
+bool CSegment::CreateEquipmentMaker (int32_t nOldFunction)
 {
-m_nObjProducer = gameData.producers.nEquipmentMakers;
+ENTER (0, 0);
+m_nObjProducer = gameData.producerData.nEquipmentMakers;
 if (!CreateObjectProducer (nOldFunction, gameFileInfo.equipGen.count))
-	return false;
-++gameData.producers.nEquipmentMakers;
-tObjectProducerInfo& producer = gameData.producers.equipmentMakers [m_nObjProducer];
+	RETVAL (false)
+++gameData.producerData.nEquipmentMakers;
+tObjectProducerInfo& producer = gameData.producerData.equipmentMakers [m_nObjProducer];
 producer.xHitPoints = OBJ_PRODUCER_HP_DEFAULT;
 producer.xInterval = OBJ_PRODUCER_INTERVAL_DEFAULT;
 producer.nSegment = Index ();
 producer.nProducer = m_value;
 producer.bAssigned = false;
-return true;
+RETVAL (true)
 }
 
 //------------------------------------------------------------
 
 void SetEquipmentMakerStates (void)
 {
-for (int i = 0; i < gameData.producers.nEquipmentMakers; i++)
-	gameData.producers.producers [gameData.producers.equipmentMakers [i].nProducer].bEnabled =
-		FindTriggerTarget (gameData.producers.producers [i].nSegment, -1) == 0;
+ENTER (0, 0);
+for (int32_t i = 0; i < gameData.producerData.nEquipmentMakers; i++)
+	gameData.producerData.producers [gameData.producerData.equipmentMakers [i].nProducer].bEnabled =
+		FindTriggerTarget (gameData.producerData.producers [i].nSegment, -1) == 0;
+RETURN
 }
 
 //------------------------------------------------------------
-// Adds a CSegment that already is a special nType into the gameData.producers.producers array.
-bool CSegment::CreateGenerator (int nType)
+// Adds a CSegment that already is a special nType into the gameData.producerData.producers array.
+bool CSegment::CreateGenerator (int32_t nType)
 {
+ENTER (0, 0);
 m_function = nType;
 if (m_function == SEGMENT_FUNC_ROBOTMAKER)
-	return CreateRobotMaker (SEGMENT_FUNC_NONE);
+	RETVAL (CreateRobotMaker (SEGMENT_FUNC_NONE))
 else if (m_function == SEGMENT_FUNC_EQUIPMAKER)
-	return CreateEquipmentMaker (SEGMENT_FUNC_NONE);
+	RETVAL (CreateEquipmentMaker (SEGMENT_FUNC_NONE))
 else if ((m_function == SEGMENT_FUNC_FUELCENTER) || (m_function == SEGMENT_FUNC_REPAIRCENTER)) {
 	if (!CreateProducer (SEGMENT_FUNC_NONE))
-		return false;
+		RETVAL (false)
 	if (m_function == SEGMENT_FUNC_REPAIRCENTER)
-		m_nObjProducer = gameData.producers.nRepairCenters++;
-	return true;
+		m_nObjProducer = gameData.producerData.nRepairCenters++;
+	RETVAL (true)
 	}
-return false;
+RETVAL (false)
 }
 
 //	The lower this number is, the more quickly the center can be re-triggered.
@@ -194,63 +203,64 @@ return false;
 
 //------------------------------------------------------------
 //	Trigger (enable) the materialization center in CSegment nSegment
-int StartObjectProducer (short nSegment)
+int32_t StartObjectProducer (int16_t nSegment)
 {
-	// -- CSegment		*segP = &SEGMENTS [nSegment];
-	CSegment*		segP = &SEGMENTS [nSegment];
+ENTER (0, 0);
+	CSegment*		pSeg = SEGMENT (nSegment);
 	CFixVector		pos, delta;
-	tProducerInfo	*objProducerP;
-	int				nObject;
+	tProducerInfo	*pObjProducer;
+	int32_t			nObject;
 
-if (segP->m_nObjProducer < 0)
-	return 0;
-if (segP->m_function == SEGMENT_FUNC_EQUIPMAKER) {	// toggle it on or off
-	if (segP->m_nObjProducer >= gameData.producers.nEquipmentMakers)
-		return 0;
-	objProducerP = gameData.producers.producers + gameData.producers.equipmentMakers [segP->m_nObjProducer].nProducer;
-	return (objProducerP->bEnabled = !objProducerP->bEnabled) ? 1 : 2;
+if (pSeg->m_nObjProducer < 0)
+	RETVAL (0)
+if (pSeg->m_function == SEGMENT_FUNC_EQUIPMAKER) {	// toggle it on or off
+	if (pSeg->m_nObjProducer >= gameData.producerData.nEquipmentMakers)
+		RETVAL (0)
+	pObjProducer = gameData.producerData.producers + gameData.producerData.equipmentMakers [pSeg->m_nObjProducer].nProducer;
+	return (pObjProducer->bEnabled = !pObjProducer->bEnabled) ? 1 : 2;
 	}
-if (segP->m_nObjProducer >= gameData.producers.nRobotMakers)
-	return 0;
-objProducerP = gameData.producers.producers + gameData.producers.robotMakers [segP->m_nObjProducer].nProducer;
-if (objProducerP->bEnabled)
-	return 0;
+if (pSeg->m_nObjProducer >= gameData.producerData.nRobotMakers)
+	RETVAL (0)
+pObjProducer = gameData.producerData.producers + gameData.producerData.robotMakers [pSeg->m_nObjProducer].nProducer;
+if (pObjProducer->bEnabled)
+	RETVAL (0)
 //	MK: 11/18/95, At insane, object producers work forever!
-if (gameStates.app.bD1Mission || (gameStates.app.nDifficultyLevel + 1 < NDL)) {
-	if (!objProducerP->nLives)
-		return 0;
-	--objProducerP->nLives;
+if (gameStates.app.bD1Mission || (gameStates.app.nDifficultyLevel + 1 < DIFFICULTY_LEVEL_COUNT)) {
+	if (!pObjProducer->nLives)
+		RETVAL (0)
+	--pObjProducer->nLives;
 	}
 
-objProducerP->xTimer = I2X (1000);	//	Make sure the first robot gets emitted right away.
-objProducerP->bEnabled = 1;			//	Say this center is enabled, it can create robots.
-objProducerP->xCapacity = I2X (gameStates.app.nDifficultyLevel + 3);
-objProducerP->xDisableTime = OBJECT_PRODUCER_LIFE;
+pObjProducer->xTimer = I2X (1000);	//	Make sure the first robot gets emitted right away.
+pObjProducer->bEnabled = 1;			//	Say this center is enabled, it can create robots.
+pObjProducer->xCapacity = I2X (gameStates.app.nDifficultyLevel + 3);
+pObjProducer->xDisableTime = OBJECT_PRODUCER_LIFE;
 
 //	Create a bright CObject in the CSegment.
-pos = objProducerP->vCenter;
-delta = gameData.segs.vertices [SEGMENTS [nSegment].m_vertices [0]] - objProducerP->vCenter;
+pos = pObjProducer->vCenter;
+delta = gameData.segData.vertices [SEGMENT (nSegment)->m_vertices [0]] - pObjProducer->vCenter;
 pos += delta * (I2X (1)/2);
 nObject = CreateLight (SINGLE_LIGHT_ID, nSegment, pos);
 if (nObject != -1) {
-	OBJECTS [nObject].SetLife (OBJECT_PRODUCER_LIFE);
-	OBJECTS [nObject].cType.lightInfo.intensity = I2X (8);	//	Light cast by a producer.
+	OBJECT (nObject)->SetLife (OBJECT_PRODUCER_LIFE);
+	OBJECT (nObject)->cType.lightInfo.intensity = I2X (8);	//	Light cast by a producer.
 	}
-return 0;
+RETVAL (0)
 }
 
 //	----------------------------------------------------------------------------------------------------------
 
-int GetObjProducerObjType (tProducerInfo *objProducerP, int *objFlags, int maxType)
+int32_t GetObjProducerObjType (tProducerInfo *pObjProducer, int32_t *objFlags, int32_t maxType)
 {
-	int	i, nObjIndex, nTypes = 0;
-	uint	flags;
-	ubyte	objTypes [64];
+ENTER (0, 0);
+	int32_t	i, nObjIndex, nTypes = 0;
+	uint32_t	flags;
+	uint8_t	objTypes [64];
 
 memset (objTypes, 0, sizeof (objTypes));
 for (i = 0; i < 3; i++) {
 	nObjIndex = i * 32;
-	flags = (uint) objFlags [i];
+	flags = (uint32_t) objFlags [i];
 	while (flags && (nObjIndex < maxType)) {
 		if (flags & 1)
 			objTypes [nTypes++] = nObjIndex;
@@ -259,369 +269,383 @@ for (i = 0; i < 3; i++) {
 		}
 	}
 if (!nTypes)
-	return -1;
+	RETVAL (-1)
 if (nTypes == 1)
-	return objTypes [0];
-return objTypes [(RandShort () * nTypes) / 32768];
+	RETVAL (objTypes [0])
+RETVAL (objTypes [(RandShort () * nTypes) / 32768])
 }
 
 //------------------------------------------------------------
 //	Trigger (enable) the materialization center in CSegment nSegment
-void OperateRobotMaker (CObject *objP, short nSegment)
+void OperateRobotMaker (CObject *pObj, int16_t nSegment)
 {
-	CSegment*		segP = &SEGMENTS [nSegment];
-	tProducerInfo*	objProducerP;
-	short				nType;
+ENTER (0, 0);
+	CSegment*		pSeg = SEGMENT (nSegment);
+	tProducerInfo*	pObjProducer;
+	int16_t			nType;
 
 if (nSegment < 0)
 	nType = 255;
 else {
-	objProducerP = gameData.producers.producers + gameData.producers.robotMakers [segP->m_nObjProducer].nProducer;
-	nType = GetObjProducerObjType (objProducerP, gameData.producers.robotMakers [segP->m_nObjProducer].objFlags, MAX_ROBOT_TYPES);
+	pObjProducer = gameData.producerData.producers + gameData.producerData.robotMakers [pSeg->m_nObjProducer].nProducer;
+	nType = GetObjProducerObjType (pObjProducer, gameData.producerData.robotMakers [pSeg->m_nObjProducer].objFlags, MAX_ROBOT_TYPES);
 	if (nType < 0)
 		nType = 255;
 	}
-objP->BossSpewRobot (NULL, nType, 1);
+pObj->BossSpewRobot (NULL, nType, 1);
+RETURN
 }
 
 //	----------------------------------------------------------------------------------------------------------
 
-CObject *CreateMorphRobot (CSegment *segP, CFixVector *vObjPosP, ubyte nObjId)
+CObject *CreateMorphRobot (CSegment *pSeg, CFixVector *vObjPosP, uint8_t nObjId)
 {
-	short			nObject;
-	CObject		*objP;
-	tRobotInfo	*botInfoP;
-	ubyte			default_behavior;
+ENTER (0, 0);
+	int16_t		nObject;
+	CObject		*pObj;
+	tRobotInfo	*pRobotInfo;
+	uint8_t		default_behavior;
 
 LOCALPLAYER.numRobotsLevel++;
 LOCALPLAYER.numRobotsTotal++;
-nObject = CreateRobot (nObjId, segP->Index (), *vObjPosP);
-if (nObject < 0) {
+nObject = CreateRobot (nObjId, pSeg->Index (), *vObjPosP);
+pObj = OBJECT (nObject);
+if (!pObj) {
 #if TRACE
 	console.printf (1, "Can't create morph robot.  Aborting morph.\n");
 #endif
 	Int3 ();
-	return NULL;
+	RETVAL (NULL)
 	}
-objP = OBJECTS + nObject;
 //Set polygon-CObject-specific data
-botInfoP = &ROBOTINFO (objP->info.nId);
-objP->rType.polyObjInfo.nModel = botInfoP->nModel;
-objP->rType.polyObjInfo.nSubObjFlags = 0;
+pRobotInfo = ROBOTINFO (pObj);
+if (!pRobotInfo) {
+	ReleaseObject (nObject);
+	RETVAL (NULL)
+	}
+pObj->rType.polyObjInfo.nModel = pRobotInfo->nModel;
+pObj->rType.polyObjInfo.nSubObjFlags = 0;
 //set Physics info
-objP->mType.physInfo.mass = botInfoP->mass;
-objP->mType.physInfo.drag = botInfoP->drag;
-objP->mType.physInfo.flags |= (PF_LEVELLING);
-objP->SetShield (RobotDefaultShield (objP));
-default_behavior = botInfoP->behavior;
-if (ROBOTINFO (objP->info.nId).bossFlag)
-	gameData.bosses.Add (nObject);
-InitAIObject (objP->Index (), default_behavior, -1);		//	Note, -1 = CSegment this robot goes to to hide, should probably be something useful
-CreateNSegmentPath (objP, 6, -1);		//	Create a 6 CSegment path from creation point.
-gameData.ai.localInfo [nObject].mode = AIBehaviorToMode (default_behavior);
-return objP;
+pObj->mType.physInfo.mass = pRobotInfo->mass;
+pObj->mType.physInfo.drag = pRobotInfo->drag;
+pObj->mType.physInfo.flags |= (PF_LEVELLING);
+pObj->SetShield (RobotDefaultShield (pObj));
+default_behavior = pRobotInfo->behavior;
+if (pObj->IsBoss ())
+	gameData.bossData.Add (nObject);
+InitAIObject (pObj->Index (), default_behavior, -1);		//	Note, -1 = CSegment this robot goes to to hide, should probably be something useful
+CreateNSegmentPath (pObj, 6, -1);		//	Create a 6 CSegment path from creation point.
+gameData.aiData.localInfo [nObject].mode = AIBehaviorToMode (default_behavior);
+RETVAL (pObj)
 }
 
-int Num_extryRobots = 15;
+int32_t Num_extryRobots = 15;
 
 #if DBG
-int	FrameCount_last_msg = 0;
+int32_t	FrameCount_last_msg = 0;
 #endif
 
 //	----------------------------------------------------------------------------------------------------------
 
-void CreateObjectProducerEffect (tProducerInfo *objProducerP, ubyte nVideoClip)
+void CreateObjectProducerEffect (tProducerInfo *pObjProducer, uint8_t nVideoClip)
 {
-CFixVector vPos = SEGMENTS [objProducerP->nSegment].Center ();
+ENTER (0, 0);
+CFixVector vPos = SEGMENT (pObjProducer->nSegment)->Center ();
 // HACK!!!The 10 under here should be something equal to the 1/2 the size of the CSegment.
-CObject* objP = CreateExplosion ((short) objProducerP->nSegment, vPos, I2X (10), nVideoClip);
-if (objP) {
-	ExtractOrientFromSegment (&objP->info.position.mOrient, SEGMENTS + objProducerP->nSegment);
-	if (gameData.effects.vClips [0][nVideoClip].nSound > -1)
-		audio.CreateSegmentSound (gameData.effects.vClips [0][nVideoClip].nSound, (short) objProducerP->nSegment, 0, vPos, 0, I2X (1));
-	objProducerP->bFlag	= 1;
-	objProducerP->xTimer = 0;
+CObject* pObj = CreateExplosion ((int16_t) pObjProducer->nSegment, vPos, I2X (10), nVideoClip);
+if (pObj) {
+	ExtractOrientFromSegment (&pObj->info.position.mOrient, SEGMENT (pObjProducer->nSegment));
+	if (gameData.effectData.animations [0][nVideoClip].nSound > -1)
+		audio.CreateSegmentSound (gameData.effectData.animations [0][nVideoClip].nSound, (int16_t) pObjProducer->nSegment, 0, vPos, 0, I2X (1));
+	pObjProducer->bFlag	= 1;
+	pObjProducer->xTimer = 0;
 	}
+RETURN
 }
 
 //	----------------------------------------------------------------------------------------------------------
 
-void EquipmentMakerHandler (tProducerInfo * objProducerP)
+void EquipmentMakerHandler (tProducerInfo * pObjProducer)
 {
-	int			nObject, nObjProducer, nType;
-	CObject		*objP;
+ENTER (0, 0);
+	int32_t		nObject, nObjProducer, nType;
+	CObject		*pObj;
 	CFixVector	vPos;
 	fix			topTime;
 
-if (!objProducerP->bEnabled)
-	return;
-nObjProducer = SEGMENTS [objProducerP->nSegment].m_nObjProducer;
+if (!pObjProducer->bEnabled)
+	RETURN
+nObjProducer = SEGMENT (pObjProducer->nSegment)->m_nObjProducer;
 if (nObjProducer == -1) {
 #if TRACE
-	console.printf (CON_DBG, "Dysfunctional robot generator at %d\n", objProducerP->nSegment);
+	console.printf (CON_DBG, "Dysfunctional robot generator at %d\n", pObjProducer->nSegment);
 #endif
-	return;
+	RETURN
 	}
-objProducerP->xTimer += gameData.time.xFrame;
-if (!objProducerP->bFlag) {
+pObjProducer->xTimer += gameData.timeData.xFrame;
+if (!pObjProducer->bFlag) {
 	topTime = EQUIP_GEN_TIME;
-	if (objProducerP->xTimer < topTime)
-		return;
-	nObject = SEGMENTS [objProducerP->nSegment].m_objects;
+	if (pObjProducer->xTimer < topTime)
+		RETURN
+	nObject = SEGMENT (pObjProducer->nSegment)->m_objects;
 	while (nObject >= 0) {
-		objP = OBJECTS + nObject;
-		if ((objP->info.nType == OBJ_POWERUP) || (objP->info.nId == OBJ_PLAYER)) {
-			objProducerP->xTimer = 0;
-			return;
+		pObj = OBJECT (nObject);
+		if ((pObj->info.nType == OBJ_POWERUP) || (pObj->info.nId == OBJ_PLAYER)) {
+			pObjProducer->xTimer = 0;
+			RETURN
 			}
-		nObject = objP->info.nNextInSeg;
+		nObject = pObj->info.nNextInSeg;
 		}
-	CreateObjectProducerEffect (objProducerP, VCLIP_MORPHING_ROBOT);
+	CreateObjectProducerEffect (pObjProducer, ANIM_MORPHING_ROBOT);
 	}
-else if (objProducerP->bFlag == 1) {			// Wait until 1/2 second after VCLIP started.
-	if (objProducerP->xTimer < (gameData.effects.vClips [0][VCLIP_MORPHING_ROBOT].xTotalTime / 2))
-		return;
-	objProducerP->bFlag = 0;
-	objProducerP->xTimer = 0;
-	nType = GetObjProducerObjType (objProducerP, gameData.producers.equipmentMakers [nObjProducer].objFlags, MAX_POWERUP_TYPES);
+else if (pObjProducer->bFlag == 1) {			// Wait until 1/2 second after VCLIP started.
+	if (pObjProducer->xTimer < (gameData.effectData.animations [0][ANIM_MORPHING_ROBOT].xTotalTime / 2))
+		RETURN
+	pObjProducer->bFlag = 0;
+	pObjProducer->xTimer = 0;
+	nType = GetObjProducerObjType (pObjProducer, gameData.producerData.equipmentMakers [nObjProducer].objFlags, MAX_POWERUP_TYPES);
 	if (nType < 0)
-		return;
-	vPos = SEGMENTS [objProducerP->nSegment].Center ();
+		RETURN
+	vPos = SEGMENT (pObjProducer->nSegment)->Center ();
 	// If this is the first materialization, set to valid robot.
-	nObject = CreatePowerup (nType, -1, (short) objProducerP->nSegment, vPos, 1, true);
-	if (nObject < 0)
-		return;
-	objP = OBJECTS + nObject;
+	nObject = CreatePowerup (nType, -1, (int16_t) pObjProducer->nSegment, vPos, 1, true);
+	pObj = OBJECT (nObject);
+	if (!pObj)
+		RETURN
 	if (IsMultiGame) {
 		gameData.multiplayer.maxPowerupsAllowed [nType]++;
 		gameData.multigame.create.nObjNums [gameData.multigame.create.nCount++] = nObject;
 		}
-	objP->rType.vClipInfo.nClipIndex = gameData.objs.pwrUp.info [objP->info.nId].nClipIndex;
-	objP->rType.vClipInfo.xFrameTime = gameData.effects.vClips [0][objP->rType.vClipInfo.nClipIndex].xFrameTime;
-	objP->rType.vClipInfo.nCurFrame = 0;
-	objP->info.nCreator = SEGMENTS [objProducerP->nSegment].m_owner;
-	objP->SetLife (IMMORTAL_TIME);
+	pObj->rType.animationInfo.nClipIndex = gameData.objData.pwrUp.info [pObj->info.nId].nClipIndex;
+	pObj->rType.animationInfo.xFrameTime = gameData.effectData.animations [0][pObj->rType.animationInfo.nClipIndex].xFrameTime;
+	pObj->rType.animationInfo.nCurFrame = 0;
+	pObj->info.nCreator = SEGMENT (pObjProducer->nSegment)->m_owner;
+	pObj->SetLife (IMMORTAL_TIME);
 	}
 else {
-	objProducerP->bFlag = 0;
-	objProducerP->xTimer = 0;
+	pObjProducer->bFlag = 0;
+	pObjProducer->xTimer = 0;
 	}
+RETURN
 }
 
 //	----------------------------------------------------------------------------------------------------------
 
-void VirusGenHandler (tProducerInfo * objProducerP)
+void VirusGenHandler (tProducerInfo * pObjProducer)
 {
-	int			nObject, nObjProducer;
-	CObject		*objP;
+ENTER (0, 0);
+	int32_t			nObject, nObjProducer;
+	CObject		*pObj;
 	CFixVector	vPos;
 	fix			topTime;
 
-if (gameStates.entropy.bExitSequence || (SEGMENTS [objProducerP->nSegment].m_owner <= 0))
-	return;
-nObjProducer = SEGMENTS [objProducerP->nSegment].m_nObjProducer;
+if (gameStates.entropy.bExitSequence || (SEGMENT (pObjProducer->nSegment)->m_owner <= 0))
+	RETURN
+nObjProducer = SEGMENT (pObjProducer->nSegment)->m_nObjProducer;
 if (nObjProducer == -1) {
 #if TRACE
-	console.printf (CON_DBG, "Dysfunctional robot generator at %d\n", objProducerP->nSegment);
+	console.printf (CON_DBG, "Dysfunctional robot generator at %d\n", pObjProducer->nSegment);
 #endif
-	return;
+	RETURN
 	}
-objProducerP->xTimer += gameData.time.xFrame;
-if (!objProducerP->bFlag) {
+pObjProducer->xTimer += gameData.timeData.xFrame;
+if (!pObjProducer->bFlag) {
 	topTime = I2X (extraGameInfo [1].entropy.nVirusGenTime);
-	if (objProducerP->xTimer < topTime)
-		return;
-	nObject = SEGMENTS [objProducerP->nSegment].m_objects;
+	if (pObjProducer->xTimer < topTime)
+		RETURN
+	nObject = SEGMENT (pObjProducer->nSegment)->m_objects;
 	while (nObject >= 0) {
-		objP = OBJECTS + nObject;
-		if ((objP->info.nType == OBJ_POWERUP) && (objP->info.nId == POW_ENTROPY_VIRUS)) {
-			objProducerP->xTimer = 0;
-			return;
+		pObj = OBJECT (nObject);
+		if ((pObj->info.nType == OBJ_POWERUP) && (pObj->info.nId == POW_ENTROPY_VIRUS)) {
+			pObjProducer->xTimer = 0;
+			RETURN
 			}
-		nObject = objP->info.nNextInSeg;
+		nObject = pObj->info.nNextInSeg;
 		}
-	CreateObjectProducerEffect (objProducerP, VCLIP_POWERUP_DISAPPEARANCE);
+	CreateObjectProducerEffect (pObjProducer, ANIM_POWERUP_DISAPPEARANCE);
 	}
-else if (objProducerP->bFlag == 1) {			// Wait until 1/2 second after VCLIP started.
-	if (objProducerP->xTimer < (gameData.effects.vClips [0][VCLIP_POWERUP_DISAPPEARANCE].xTotalTime / 2))
-		return;
-	objProducerP->bFlag = 0;
-	objProducerP->xTimer = 0;
-	vPos = SEGMENTS [objProducerP->nSegment].Center ();
+else if (pObjProducer->bFlag == 1) {			// Wait until 1/2 second after VCLIP started.
+	if (pObjProducer->xTimer < (gameData.effectData.animations [0][ANIM_POWERUP_DISAPPEARANCE].xTotalTime / 2))
+		RETURN
+	pObjProducer->bFlag = 0;
+	pObjProducer->xTimer = 0;
+	vPos = SEGMENT (pObjProducer->nSegment)->Center ();
 	// If this is the first materialization, set to valid robot.
-	nObject = CreatePowerup (POW_ENTROPY_VIRUS, -1, (short) objProducerP->nSegment, vPos, 1);
+	nObject = CreatePowerup (POW_ENTROPY_VIRUS, -1, (int16_t) pObjProducer->nSegment, vPos, 1);
 	if (nObject >= 0) {
-		objP = OBJECTS + nObject;
+		pObj = OBJECT (nObject);
 		if (IsMultiGame)
 			gameData.multigame.create.nObjNums [gameData.multigame.create.nCount++] = nObject;
-		objP->rType.vClipInfo.nClipIndex = gameData.objs.pwrUp.info [objP->info.nId].nClipIndex;
-		objP->rType.vClipInfo.xFrameTime = gameData.effects.vClips [0][objP->rType.vClipInfo.nClipIndex].xFrameTime;
-		objP->rType.vClipInfo.nCurFrame = 0;
-		objP->info.nCreator = SEGMENTS [objProducerP->nSegment].m_owner;
-		objP->SetLife (IMMORTAL_TIME);
+		pObj->rType.animationInfo.nClipIndex = gameData.objData.pwrUp.info [pObj->info.nId].nClipIndex;
+		pObj->rType.animationInfo.xFrameTime = gameData.effectData.animations [0][pObj->rType.animationInfo.nClipIndex].xFrameTime;
+		pObj->rType.animationInfo.nCurFrame = 0;
+		pObj->info.nCreator = SEGMENT (pObjProducer->nSegment)->m_owner;
+		pObj->SetLife (IMMORTAL_TIME);
 		}
 	}
 else {
-	objProducerP->bFlag = 0;
-	objProducerP->xTimer = 0;
+	pObjProducer->bFlag = 0;
+	pObjProducer->xTimer = 0;
 	}
+RETURN
 }
 
 //	----------------------------------------------------------------------------------------------------------
 
-inline int VertigoObjFlags (tObjectProducerInfo *miP)
+inline int32_t VertigoObjFlags (tObjectProducerInfo *pInfo)
 {
-return miP->objFlags [2] = gameData.objs.nVertigoBotFlags;
+return pInfo->objFlags [2] = gameData.objData.nVertigoBotFlags;
 }
 
 //	----------------------------------------------------------------------------------------------------------
 
-void RobotMakerHandler (tProducerInfo * objProducerP)
+void RobotMakerHandler (tProducerInfo * pObjProducer)
 {
+ENTER (0, 0);
 	fix			xDistToPlayer;
 	CFixVector	vPos, vDir;
-	int			nObjProducer, nSegment, nObject;
-	CObject		*objP;
+	int32_t		nObjProducer, nSegment, nObject;
+	CObject*		pObj;
 	fix			topTime;
-	int			nType, nMyStation, nCount;
-	//int			i;
+	int32_t		nType, nMyStation, nCount;
 
 if (gameStates.app.bGameSuspended & SUSP_ROBOTS)
-	return;
-if (!objProducerP->bEnabled)
-	return;
+	RETURN
+if (!pObjProducer->bEnabled)
+	RETURN
 #if DBG
-if (objProducerP->nSegment == nDbgSeg)
-	nDbgSeg = nDbgSeg;
+if (pObjProducer->nSegment == nDbgSeg)
+	BRP;
 #endif
-if (objProducerP->xDisableTime > 0) {
-	objProducerP->xDisableTime -= gameData.time.xFrame;
-	if (objProducerP->xDisableTime <= 0) {
+if (pObjProducer->xDisableTime > 0) {
+	pObjProducer->xDisableTime -= gameData.timeData.xFrame;
+	if (pObjProducer->xDisableTime <= 0) {
 #if TRACE
-		console.printf (CON_DBG, "Robot center #%i gets disabled due to time running out.\n",PRODUCER_IDX (objProducerP));
+		console.printf (CON_DBG, "Robot center #%i gets disabled due to time running out.\n",PRODUCER_IDX (pObjProducer));
 #endif
-		objProducerP->bEnabled = 0;
+		pObjProducer->bEnabled = 0;
 		}
 	}
 //	No robot making in multiplayer mode.
-if (IsMultiGame && (!gameData.app.GameMode (GM_MULTI_ROBOTS) || !IAmGameHost ()))
-	return;
+if (IsMultiGame && (!gameData.appData.GameMode (GM_MULTI_ROBOTS) || !IAmGameHost ()))
+	RETURN
 // Wait until transmorgafier has capacity to make a robot...
-if (objProducerP->xCapacity <= 0)
-	return;
-nObjProducer = SEGMENTS [objProducerP->nSegment].m_nObjProducer;
+if (pObjProducer->xCapacity <= 0)
+	RETURN
+nObjProducer = SEGMENT (pObjProducer->nSegment)->m_nObjProducer;
 if (nObjProducer == -1) {
 #if TRACE
-	console.printf (CON_DBG, "Dysfunctional robot generator at %d\n", objProducerP->nSegment);
+	console.printf (CON_DBG, "Dysfunctional robot generator at %d\n", pObjProducer->nSegment);
 #endif
-	return;
+	RETURN
 	}
-if (!(gameData.producers.robotMakers [nObjProducer].objFlags [0] ||
-		gameData.producers.robotMakers [nObjProducer].objFlags [1] ||
-		VertigoObjFlags (gameData.producers.robotMakers + nObjProducer)))
-	return;
+if (!(gameData.producerData.robotMakers [nObjProducer].objFlags [0] ||
+		gameData.producerData.robotMakers [nObjProducer].objFlags [1] ||
+		VertigoObjFlags (gameData.producerData.robotMakers + nObjProducer)))
+	RETURN
 
 // Wait until we have a free slot for this puppy...
-if (/*!gameStates.app.bD2XLevel &&*/ (LOCALPLAYER.RemainingRobots () >= gameData.objs.nInitialRobots + MAX_EXCESS_OBJECTS)) {
+if (/*!gameStates.app.bD2XLevel &&*/ (LOCALPLAYER.RemainingRobots () >= gameData.objData.nInitialRobots + MAX_EXCESS_OBJECTS)) {
 #if DBG
-	if (gameData.app.nFrameCount > FrameCount_last_msg + 20) {
+	if (gameData.appData.nFrameCount > FrameCount_last_msg + 20) {
 #if TRACE
 		console.printf (CON_DBG, "Cannot morph until you kill one!\n");
 #endif
-		FrameCount_last_msg = gameData.app.nFrameCount;
+		FrameCount_last_msg = gameData.appData.nFrameCount;
 		}
 #endif
-	return;
+	RETURN
 	}
-objProducerP->xTimer += gameData.time.xFrame;
-if (!objProducerP->bFlag) {
+pObjProducer->xTimer += gameData.timeData.xFrame;
+if (!pObjProducer->bFlag) {
 	if (IsMultiGame)
 		topTime = ROBOT_GEN_TIME;
 	else {
-		xDistToPlayer = CFixVector::Dist(gameData.objs.consoleP->info.position.vPos, objProducerP->vCenter);
+		xDistToPlayer = CFixVector::Dist(gameData.objData.pConsole->info.position.vPos, pObjProducer->vCenter);
 		topTime = xDistToPlayer / 64 + RandShort () * 2 + I2X (2);
 		if (topTime > ROBOT_GEN_TIME)
 			topTime = ROBOT_GEN_TIME + RandShort ();
 		if (topTime < I2X (2))
 			topTime = I2X (3)/2 + RandShort ()*2;
 		}
-	if (objProducerP->xTimer < topTime)
-		return;
-	nMyStation = PRODUCER_IDX (objProducerP);
+	if (pObjProducer->xTimer < topTime)
+		RETURN
+	nMyStation = PRODUCER_IDX (pObjProducer);
 
 	//	Make sure this robotmaker hasn't put out its max without having any of them killed.
 	nCount = 0;
-	FORALL_ROBOT_OBJS (objP, i)
-		if ((objP->info.nCreator ^ 0x80) == nMyStation)
+	FORALL_ROBOT_OBJS (pObj)
+		if ((pObj->info.nCreator ^ 0x80) == nMyStation)
 			nCount++;
 	if (nCount > gameStates.app.nDifficultyLevel + 3) {
 #if TRACE
 		console.printf (CON_DBG, "Cannot morph: center %i has already put out %i robots.\n", nMyStation, nCount);
 #endif
-		objProducerP->xTimer /= 2;
-		return;
+		pObjProducer->xTimer /= 2;
+		RETURN
 		}
 	nCount = 0;
-	nSegment = objProducerP->nSegment;
+	nSegment = pObjProducer->nSegment;
 #if DBG
 	if (nSegment == nDbgSeg)
-		nDbgSeg = nDbgSeg;
+		BRP;
 #endif
-	for (nObject = SEGMENTS [nSegment].m_objects; nObject != -1; nObject = OBJECTS [nObject].info.nNextInSeg) {
+	for (nObject = SEGMENT (nSegment)->m_objects; nObject != -1; nObject = OBJECT (nObject)->info.nNextInSeg) {
 		nCount++;
 		if (nCount > LEVEL_OBJECTS) {
 #if TRACE
 			console.printf (CON_DBG, "Object list in CSegment %d is circular.", nSegment);
 #endif
 			Int3 ();
-			return;
+			RETURN
 			}
-		if (OBJECTS [nObject].info.nType == OBJ_ROBOT) {
-			OBJECTS [nObject].CollideRobotAndObjProducer ();
-			objProducerP->xTimer = topTime / 2;
-			return;
+		if (OBJECT (nObject)->info.nType == OBJ_ROBOT) {
+			OBJECT (nObject)->CollideRobotAndObjProducer ();
+			pObjProducer->xTimer = topTime / 2;
+			RETURN
 			}
-		else if (OBJECTS [nObject].info.nType == OBJ_PLAYER) {
-			OBJECTS [nObject].CollidePlayerAndObjProducer ();
-			objProducerP->xTimer = topTime / 2;
-			return;
+		else if (OBJECT (nObject)->info.nType == OBJ_PLAYER) {
+			OBJECT (nObject)->CollidePlayerAndObjProducer ();
+			pObjProducer->xTimer = topTime / 2;
+			RETURN
 			}
 		}
-	CreateObjectProducerEffect (objProducerP, VCLIP_MORPHING_ROBOT);
+	CreateObjectProducerEffect (pObjProducer, ANIM_MORPHING_ROBOT);
 	}
-else if (objProducerP->bFlag == 1) {			// Wait until 1/2 second after VCLIP started.
-	if (objProducerP->xTimer <= (gameData.effects.vClips [0][VCLIP_MORPHING_ROBOT].xTotalTime / 2))
-		return;
-	objProducerP->xCapacity -= gameData.producers.xEnergyToCreateOneRobot;
-	objProducerP->bFlag = 0;
-	objProducerP->xTimer = 0;
-	vPos = SEGMENTS [objProducerP->nSegment].Center ();
+else if (pObjProducer->bFlag == 1) {			// Wait until 1/2 second after VCLIP started.
+	if (pObjProducer->xTimer <= (gameData.effectData.animations [0][ANIM_MORPHING_ROBOT].xTotalTime / 2))
+		RETURN
+	pObjProducer->xCapacity -= gameData.producerData.xEnergyToCreateOneRobot;
+	pObjProducer->bFlag = 0;
+	pObjProducer->xTimer = 0;
+	vPos = SEGMENT (pObjProducer->nSegment)->Center ();
 	// If this is the first materialization, set to valid robot.
-	nType = (int) GetObjProducerObjType (objProducerP, gameData.producers.robotMakers [nObjProducer].objFlags, MAX_ROBOT_TYPES);
+	nType = (int32_t) GetObjProducerObjType (pObjProducer, gameData.producerData.robotMakers [nObjProducer].objFlags, MAX_ROBOT_TYPES);
 	if (nType < 0)
-		return;
+		RETURN
 #if TRACE
-	console.printf (CON_DBG, "Morph: (nType = %i) (seg = %i) (capacity = %08x)\n", nType, objProducerP->nSegment, objProducerP->xCapacity);
+	console.printf (CON_DBG, "Morph: (nType = %i) (seg = %i) (capacity = %08x)\n", nType, pObjProducer->nSegment, pObjProducer->xCapacity);
 #endif
-	if (!(objP = CreateMorphRobot (SEGMENTS + objProducerP->nSegment, &vPos, nType))) {
+	if (!(pObj = CreateMorphRobot (SEGMENT (pObjProducer->nSegment), &vPos, nType))) {
 #if TRACE
 		console.printf (CON_DBG, "Warning: CreateMorphRobot returned NULL (no OBJECTS left?)\n");
 #endif
-		return;
+		RETURN
 		}
 	if (IsMultiGame)
-		MultiSendCreateRobot (PRODUCER_IDX (objProducerP), objP->Index (), nType);
-	objP->info.nCreator = (PRODUCER_IDX (objProducerP)) | 0x80;
+		MultiSendCreateRobot (PRODUCER_IDX (pObjProducer), pObj->Index (), nType);
+	pObj->info.nCreator = (PRODUCER_IDX (pObjProducer)) | 0x80;
 	// Make object face player...
-	vDir = gameData.objs.consoleP->info.position.vPos - objP->info.position.vPos;
-	objP->info.position.mOrient = CFixMatrix::CreateFU(vDir, objP->info.position.mOrient.m.dir.u);
-	//objP->info.position.mOrient = CFixMatrix::CreateFU(vDir, &objP->info.position.mOrient.m.v.u, NULL);
-	objP->MorphStart ();
+	vDir = gameData.objData.pConsole->info.position.vPos - pObj->info.position.vPos;
+	pObj->info.position.mOrient = CFixMatrix::CreateFU(vDir, pObj->info.position.mOrient.m.dir.u);
+	//pObj->info.position.mOrient = CFixMatrix::CreateFU(vDir, &pObj->info.position.mOrient.m.v.u, NULL);
+	pObj->MorphStart ();
 	}
 else {
-	objProducerP->bFlag = 0;
-	objProducerP->xTimer = 0;
+	pObjProducer->bFlag = 0;
+	pObjProducer->xTimer = 0;
 	}
+RETURN
 }
 
 
@@ -629,36 +653,38 @@ else {
 // Called once per frame, replenishes fuel supply.
 void UpdateAllProducers (void)
 {
-	int				i, t;
-	tProducerInfo*	producerP = &gameData.producers.producers [0];
-	fix				xAmountToReplenish = FixMul (gameData.time.xFrame, gameData.producers.xFuelRefillSpeed);
+ENTER (0, 0);
+	int32_t			i, t;
+	tProducerInfo	*pProducer = &gameData.producerData.producers [0];
+	fix				xAmountToReplenish = FixMul (gameData.timeData.xFrame, gameData.producerData.xFuelRefillSpeed);
 
-for (i = 0; i < gameData.producers.nProducers; i++, producerP++) {
-	t = producerP->nType;
+for (i = 0; i < gameData.producerData.nProducers; i++, pProducer++) {
+	t = pProducer->nType;
 	if (t == SEGMENT_FUNC_ROBOTMAKER) {
 		if (IsMultiGame && IsEntropyGame)
-			VirusGenHandler (gameData.producers.producers + i);
+			VirusGenHandler (gameData.producerData.producers + i);
 		else if (!(gameStates.app.bGameSuspended & SUSP_ROBOTS))
-			RobotMakerHandler (gameData.producers.producers + i);
+			RobotMakerHandler (gameData.producerData.producers + i);
 		}
 	else if (t == SEGMENT_FUNC_EQUIPMAKER) {
 		if (!(gameStates.app.bGameSuspended & SUSP_POWERUPS))
-			EquipmentMakerHandler (gameData.producers.producers + i);
+			EquipmentMakerHandler (gameData.producerData.producers + i);
 		}
 	else if (t == SEGMENT_FUNC_REACTOR) {
-		//controlcen_proc (gameData.producers.producers + i);
+		//controlcen_proc (gameData.producerData.producers + i);
 		}
-	else if ((producerP->xMaxCapacity > 0) &&
-				(gameData.producers.playerSegP != SEGMENTS + producerP->nSegment)) {
-		if (producerP->xCapacity < producerP->xMaxCapacity) {
- 			producerP->xCapacity += xAmountToReplenish;
-			if (producerP->xCapacity >= producerP->xMaxCapacity) {
-				producerP->xCapacity = producerP->xMaxCapacity;
+	else if ((pProducer->xMaxCapacity > 0) &&
+				(gameData.producerData.playerSegP != SEGMENT (pProducer->nSegment))) {
+		if (pProducer->xCapacity < pProducer->xMaxCapacity) {
+ 			pProducer->xCapacity += xAmountToReplenish;
+			if (pProducer->xCapacity >= pProducer->xMaxCapacity) {
+				pProducer->xCapacity = pProducer->xMaxCapacity;
 				//gauge_message ("Fuel center is fully recharged!   ");
 				}
 			}
 		}
 	}
+RETURN
 }
 
 #define PRODUCER_SOUND_DELAY (I2X (1)/4)		//play every half second
@@ -667,28 +693,29 @@ for (i = 0; i < gameData.producers.nProducers; i++, producerP++) {
 
 fix CSegment::ShieldDamage (fix xMaxDamage)
 {
+ENTER (0, 0);
 	static fix lastPlayTime = 0;
 
 if (!(m_xDamage [0] || IsEntropyGame))
-	return 0;
-int bEntropy = !m_xDamage [0];
+	RETVAL (0)
+int32_t bEntropy = !m_xDamage [0];
 if (bEntropy && ((m_owner < 1) || (m_owner == GetTeam (N_LOCALPLAYER) + 1)))
-	return 0;
+	RETVAL (0)
 fix rate = bEntropy ? I2X (extraGameInfo [1].entropy.nShieldDamageRate) : m_xDamage [0];
-fix amount = FixMul (gameData.time.xFrame, rate);
+fix amount = FixMul (gameData.timeData.xFrame, rate);
 if (amount > xMaxDamage)
 	amount = xMaxDamage;
 if (bEntropy) {
-	if (lastPlayTime > gameData.time.xGame)
+	if (lastPlayTime > gameData.timeData.xGame)
 		lastPlayTime = 0;
-	if (gameData.time.xGame > lastPlayTime + PRODUCER_SOUND_DELAY) {
+	if (gameData.timeData.xGame > lastPlayTime + PRODUCER_SOUND_DELAY) {
 		audio.PlaySound (SOUND_PLAYER_GOT_HIT, SOUNDCLASS_GENERIC, I2X (1) / 2);
 		if (IsMultiGame)
 			MultiSendPlaySound (SOUND_PLAYER_GOT_HIT, I2X (1) / 2);
-		lastPlayTime = gameData.time.xGame;
+		lastPlayTime = gameData.timeData.xGame;
 		}
 	}
-return amount;
+RETVAL (amount)
 }
 
 //-------------------------------------------------------------
@@ -697,7 +724,7 @@ fix CSegment::EnergyDamage (fix xMaxDamage)
 {
 if (!m_xDamage [1])
 	return 0;
-fix amount = FixMul (gameData.time.xFrame, m_xDamage [1]);
+fix amount = FixMul (gameData.timeData.xFrame, m_xDamage [1]);
 if (amount > xMaxDamage)
 	amount = xMaxDamage;
 return amount;
@@ -707,34 +734,32 @@ return amount;
 
 fix CSegment::Refuel (fix nMaxFuel)
 {
-	fix	amount;
-
+ENTER (0, 0);
 	static fix lastPlayTime = 0;
 
-gameData.producers.playerSegP = this;
+gameData.producerData.playerSegP = this;
 if (IsEntropyGame && ((m_owner < 0) ||
 	 ((m_owner > 0) && (m_owner != GetTeam (N_LOCALPLAYER) + 1))))
-	return 0;
+	RETVAL (0)
 if (m_function != SEGMENT_FUNC_FUELCENTER)
-	return 0;
+	RETVAL (0)
 DetectEscortGoalAccomplished (-4);	//	UGLY!Hack!-4 means went through producer.
 if (nMaxFuel <= 0)
-	return 0;
-if (IsEntropyGame)
-	amount = FixMul (gameData.time.xFrame, I2X (gameData.producers.xFuelGiveAmount));
-else
-	amount = FixMul (gameData.time.xFrame, gameData.producers.xFuelGiveAmount);
+	RETVAL (0)
+fix amount = IsEntropyGame
+				 ? FixMul (gameData.timeData.xFrame, I2X (gameData.producerData.xFuelGiveAmount))
+				 : FixMul (gameData.timeData.xFrame, gameData.producerData.xFuelGiveAmount);
 if (amount > nMaxFuel)
 	amount = nMaxFuel;
-if (lastPlayTime > gameData.time.xGame)
+if (lastPlayTime > gameData.timeData.xGame)
 	lastPlayTime = 0;
-if (gameData.time.xGame > lastPlayTime + PRODUCER_SOUND_DELAY) {
+if (gameData.timeData.xGame > lastPlayTime + PRODUCER_SOUND_DELAY) {
 	audio.PlaySound (SOUND_REFUEL_STATION_GIVING_FUEL, SOUNDCLASS_GENERIC, I2X (1) / 2);
 	if (IsMultiGame)
 		MultiSendPlaySound (SOUND_REFUEL_STATION_GIVING_FUEL, I2X (1) / 2);
-	lastPlayTime = gameData.time.xGame;
+	lastPlayTime = gameData.timeData.xGame;
 	}
-return amount;
+RETVAL (amount)
 }
 
 //-------------------------------------------------------------
@@ -743,44 +768,46 @@ return amount;
 // use same values as fuel centers
 fix CSegment::Repair (fix nMaxShield)
 {
+ENTER (0, 0);
 	static fix lastPlayTime = 0;
-	fix amount;
 
 if (gameOpts->legacy.bProducers)
-	return 0;
-gameData.producers.playerSegP = this;
+	RETVAL (0)
+gameData.producerData.playerSegP = this;
 if (IsEntropyGame && ((m_owner < 0) ||
 	 ((m_owner > 0) && (m_owner != GetTeam (N_LOCALPLAYER) + 1))))
-	return 0;
+	RETVAL (0)
 if (m_function != SEGMENT_FUNC_REPAIRCENTER)
-	return 0;
+	RETVAL (0)
 if (nMaxShield <= 0) {
-	return 0;
+	RETVAL (0)
 }
-amount = FixMul (gameData.time.xFrame, I2X (extraGameInfo [IsMultiGame].entropy.nShieldFillRate));
+fix amount = FixMul (gameData.timeData.xFrame, I2X (extraGameInfo [IsMultiGame].entropy.nShieldFillRate));
 if (amount > nMaxShield)
 	amount = nMaxShield;
-if (lastPlayTime > gameData.time.xGame)
+if (lastPlayTime > gameData.timeData.xGame)
 	lastPlayTime = 0;
-if (gameData.time.xGame > lastPlayTime + PRODUCER_SOUND_DELAY) {
+if (gameData.timeData.xGame > lastPlayTime + PRODUCER_SOUND_DELAY) {
 	audio.PlaySound (SOUND_REFUEL_STATION_GIVING_FUEL, SOUNDCLASS_GENERIC, I2X (1)/2);
 	if (IsMultiGame)
 		MultiSendPlaySound (SOUND_REFUEL_STATION_GIVING_FUEL, I2X (1)/2);
-	lastPlayTime = gameData.time.xGame;
+	lastPlayTime = gameData.timeData.xGame;
 	}
-return amount;
+RETVAL (amount)
 }
 
 //	--------------------------------------------------------------------------------------------
 
 void DisableObjectProducers (void)
 {
-for (int i = 0; i < gameData.producers.nRobotMakers; i++) {
-	if (gameData.producers.producers [i].nType != SEGMENT_FUNC_EQUIPMAKER) {
-		gameData.producers.producers [i].bEnabled = 0;
-		gameData.producers.producers [i].xDisableTime = 0;
+ENTER (0, 0);
+for (int32_t i = 0; i < gameData.producerData.nRobotMakers; i++) {
+	if (gameData.producerData.producers [i].nType != SEGMENT_FUNC_EQUIPMAKER) {
+		gameData.producerData.producers [i].bEnabled = 0;
+		gameData.producerData.producers [i].xDisableTime = 0;
 		}
 	}
+RETURN
 }
 
 //	--------------------------------------------------------------------------------------------
@@ -788,34 +815,37 @@ for (int i = 0; i < gameData.producers.nRobotMakers; i++) {
 //	Give them all the right number of lives.
 void InitAllObjectProducers (void)
 {
-for (int i = 0; i < gameData.producers.nProducers; i++)
-	if (gameData.producers.producers [i].nType == SEGMENT_FUNC_ROBOTMAKER) {
-		 gameData.producers.producers [i].nLives = 3;
-		 gameData.producers.producers [i].bEnabled = 0;
-		 gameData.producers.producers [i].xDisableTime = 0;
+ENTER (0, 0);
+for (int32_t i = 0; i < gameData.producerData.nProducers; i++)
+	if (gameData.producerData.producers [i].nType == SEGMENT_FUNC_ROBOTMAKER) {
+		 gameData.producerData.producers [i].nLives = 3;
+		 gameData.producerData.producers [i].bEnabled = 0;
+		 gameData.producerData.producers [i].xDisableTime = 0;
 		 }
+RETURN
 }
 
 //-----------------------------------------------------------------------------
 
-short flagGoalList [MAX_SEGMENTS_D2X];
-short flagGoalRoots [2] = {-1, -1};
-short blueFlagGoals = -1;
+int16_t flagGoalList [MAX_SEGMENTS_D2X];
+int16_t flagGoalRoots [2] = {-1, -1};
+int16_t blueFlagGoals = -1;
 
 // create linked lists of all segments with special nType blue and red goal
 
-int GatherFlagGoals (void)
+int32_t GatherFlagGoals (void)
 {
-	int			h, i, j;
-	CSegment*	segP = SEGMENTS.Buffer ();
+ENTER (0, 0);
+	int32_t		h, i, j;
+	CSegment*	pSeg = SEGMENTS.Buffer ();
 
 memset (flagGoalList, 0xff, sizeof (flagGoalList));
-for (h = i = 0; i <= gameData.segs.nLastSegment; i++, segP++) {
-	if (segP->m_function == SEGMENT_FUNC_GOAL_BLUE) {
+for (h = i = 0; i <= gameData.segData.nLastSegment; i++, pSeg++) {
+	if (pSeg->m_function == SEGMENT_FUNC_GOAL_BLUE) {
 		j = 0;
 		h |= 1;
 		}
-	else if (segP->m_function == SEGMENT_FUNC_GOAL_RED) {
+	else if (pSeg->m_function == SEGMENT_FUNC_GOAL_RED) {
 		h |= 2;
 		j = 1;
 		}
@@ -824,22 +854,22 @@ for (h = i = 0; i <= gameData.segs.nLastSegment; i++, segP++) {
 	flagGoalList [i] = flagGoalRoots [j];
 	flagGoalRoots [j] = i;
 	}
-return h;
+RETVAL (h)
 }
 
 //--------------------------------------------------------------------
 
-void MultiSendCaptureBonus (char);
+void MultiSendCaptureBonus (uint8_t);
 
-int FlagAtHome (int nFlagId)
+int32_t FlagAtHome (int32_t nFlagId)
 {
-	int		i, j;
-	CObject	*objP;
+	int32_t	i, j;
+	CObject	*pObj;
 
 for (i = flagGoalRoots [nFlagId - POW_BLUEFLAG]; i >= 0; i = flagGoalList [i])
-	for (j = SEGMENTS [i].m_objects; j >= 0; j = objP->info.nNextInSeg) {
-		objP = OBJECTS + j;
-		if ((objP->info.nType == OBJ_POWERUP) && (objP->info.nId == nFlagId))
+	for (j = SEGMENT (i)->m_objects; j >= 0; j = pObj->info.nNextInSeg) {
+		pObj = OBJECT (j);
+		if (pObj && (pObj->info.nType == OBJ_POWERUP) && (pObj->info.nId == nFlagId))
 			return 1;
 		}
 return 0;
@@ -847,7 +877,7 @@ return 0;
 
 //--------------------------------------------------------------------
 
-int CSegment::CheckFlagDrop (int nTeamId, int nFlagId, int nGoalId)
+int32_t CSegment::CheckFlagDrop (int32_t nTeamId, int32_t nFlagId, int32_t nGoalId)
 {
 if (m_function != nGoalId)
 	return 0;
@@ -858,7 +888,7 @@ if (!(LOCALPLAYER.flags & PLAYER_FLAGS_FLAG))
 if (gameStates.app.bHaveExtraGameInfo [1] && extraGameInfo [1].bEnhancedCTF &&
 	 !FlagAtHome ((nFlagId == POW_BLUEFLAG) ? POW_REDFLAG : POW_BLUEFLAG))
 	return 0;
-MultiSendCaptureBonus (char (N_LOCALPLAYER));
+MultiSendCaptureBonus (N_LOCALPLAYER);
 LOCALPLAYER.flags &= (~(PLAYER_FLAGS_FLAG));
 MaybeDropNetPowerup (-1, nFlagId, FORCE_DROP);
 return 1;
@@ -868,7 +898,7 @@ return 1;
 
 void CSegment::CheckForGoal (void)
 {
-	Assert (gameData.app.GameMode (GM_CAPTURE));
+	Assert (gameData.appData.GameMode (GM_CAPTURE));
 
 #if 1
 CheckFlagDrop (TEAM_BLUE, POW_REDFLAG, SEGMENT_FUNC_GOAL_BLUE);
@@ -876,14 +906,14 @@ CheckFlagDrop (TEAM_RED, POW_BLUEFLAG, SEGMENT_FUNC_GOAL_RED);
 #else
 if (!(LOCALPLAYER.flags & PLAYER_FLAGS_FLAG))
 	return;
-if (segP->m_function == SEGMENT_FUNC_GOAL_BLUE) {
+if (pSeg->m_function == SEGMENT_FUNC_GOAL_BLUE) {
 	if (GetTeam (N_LOCALPLAYER) == TEAM_BLUE) && FlagAtHome (POW_BLUEFLAG)) {
 		MultiSendCaptureBonus (N_LOCALPLAYER);
 		LOCALPLAYER.flags &= (~(PLAYER_FLAGS_FLAG);
 		MaybeDropNetPowerup (-1, POW_REDFLAG, FORCE_DROP);
 		}
 	}
-else if (segP->m_function == SEGMENT_FUNC_GOAL_RED) {
+else if (pSeg->m_function == SEGMENT_FUNC_GOAL_RED) {
 	if (GetTeam (N_LOCALPLAYER) == TEAM_RED) && FlagAtHome (POW_REDFLAG)) {
 		MultiSendCaptureBonus (N_LOCALPLAYER);
 		LOCALPLAYER.flags &= (~(PLAYER_FLAGS_FLAG);
@@ -907,13 +937,12 @@ if (!LOCALPLAYER.secondaryAmmo [PROXMINE_INDEX])
 #if TRACE
 console.printf (CON_DBG,"In orb goal!\n");
 #endif
-MultiSendOrbBonus ((char) N_LOCALPLAYER);
+MultiSendOrbBonus (N_LOCALPLAYER);
 LOCALPLAYER.flags &= (~(PLAYER_FLAGS_FLAG));
 LOCALPLAYER.secondaryAmmo [PROXMINE_INDEX]=0;
 }
 
 //--------------------------------------------------------------------
-#if 1//ndef FAST_FILE_IO /*permanently enabled for a reason!*/
 /*
  * reads an old_tObjProducerInfo structure from a CFile
  */
@@ -929,6 +958,24 @@ opi->xInterval = cf.ReadFix ();
 opi->nSegment = cf.ReadShort ();
 opi->nProducer = cf.ReadShort ();
 }
-#endif
+
+//--------------------------------------------------------------------
+
+tObjectProducerInfo* CProducerData::Find (int16_t nSegment, CStaticArray< tObjectProducerInfo, MAX_ROBOT_CENTERS >& producers)
+{
+for (uint32_t i = 0; i < producers.Length (); i++)
+	if (producers [i].nSegment == nSegment)
+		return producers + i;
+return NULL;
+}
+
+//--------------------------------------------------------------------
+
+tObjectProducerInfo* CProducerData::Find (int16_t nSegment)
+{
+	tObjectProducerInfo* p = Find (nSegment, robotMakers);
+
+return p ? p : Find (nSegment, equipmentMakers);
+}
 
 //--------------------------------------------------------------------

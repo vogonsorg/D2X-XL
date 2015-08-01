@@ -65,7 +65,7 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 
 //------------------------------------------------------------------------------
 
-void StopObjectMovement (CObject *objP)
+void StopObjectMovement (CObject *pObj)
 {
 controls [0].headingTime = 0;
 controls [0].pitchTime = 0;
@@ -73,11 +73,11 @@ controls [0].bankTime = 0;
 controls [0].verticalThrustTime = 0;
 controls [0].sidewaysThrustTime = 0;
 controls [0].forwardThrustTime = 0;
-if (objP) {
-	objP->mType.physInfo.rotThrust.SetZero ();
-	objP->mType.physInfo.thrust.SetZero ();
-	objP->mType.physInfo.velocity.SetZero ();
-	objP->mType.physInfo.rotVel.SetZero ();
+if (pObj) {
+	pObj->mType.physInfo.rotThrust.SetZero ();
+	pObj->mType.physInfo.thrust.SetZero ();
+	pObj->mType.physInfo.velocity.SetZero ();
+	pObj->mType.physInfo.rotVel.SetZero ();
 	}
 }
 
@@ -85,38 +85,44 @@ if (objP) {
 
 void StopPlayerMovement (void)
 {
-if (OBJECTS.Buffer () && !(gameData.objs.speedBoost.Buffer () && gameData.objs.speedBoost [OBJ_IDX (gameData.objs.consoleP)].bBoosted)) {
-	StopObjectMovement (OBJECTS + LOCALPLAYER.nObject);
-	memset (&gameData.physics.playerThrust, 0, sizeof (gameData.physics.playerThrust));
-//	gameData.time.SetTime (I2X (1));
-	gameData.objs.speedBoost [OBJ_IDX (gameData.objs.consoleP)].bBoosted = 0;
+ENTER (0, 0);
+if (OBJECTS.Buffer () && !(gameData.objData.speedBoost.Buffer () && gameData.objData.speedBoost [OBJ_IDX (gameData.objData.pConsole)].bBoosted)) {
+	StopObjectMovement (OBJECT (LOCALPLAYER.nObject));
+	memset (&gameData.physicsData.playerThrust, 0, sizeof (gameData.physicsData.playerThrust));
+//	gameData.timeData.SetTime (I2X (1));
+	gameData.objData.speedBoost [OBJ_IDX (gameData.objData.pConsole)].bBoosted = 0;
 	}
+RETURN
 }
 
 //------------------------------------------------------------------------------
 
 void CObject::Die (void)
 {
+ENTER (0, 0);
 info.nFlags |= OF_SHOULD_BE_DEAD;
+RequestEffects (DESTROY_SMOKE | DESTROY_LIGHTNING);
 #if DBG
 if (Index () == nDbgObj)
-	nDbgObj = nDbgObj;
+	BRP;
 if (this == dbgObjP)
-	dbgObjP = dbgObjP;
+	BRP;
 #endif
-if (IsMultiGame && (gameStates.multi.nGameType == UDP_GAME) && (Type () == OBJ_POWERUP)) {
-	if (!IsMissile ()) 
+if (IsMultiGame && (gameStates.multi.nGameType == UDP_GAME)) {
+	if (Type () == OBJ_POWERUP) 
 		RemovePowerupInMine (Id ());
-	else {
-		int i = FindDropInfo (Signature ());
-		if (i >= 0)
-			DelDropInfo (i);
-#if DBG
-		else
-			FindDropInfo (Signature ());
-#endif
+	else if (Type () == OBJ_WEAPON) {
+		if (IsMissile ()) {
+			int32_t i = FindDropInfo (Signature ());
+			if (i >= 0) {
+				if (gameData.objData.dropInfo [i].nDropTime == 0x7FFFFFFF) 
+					MaybeDropNetPowerup (i, gameData.objData.dropInfo [i].nPowerupType, FORCE_DROP);
+				DelDropInfo (i);
+				}
+			}
 		}
 	}
+RETURN
 }
 
 //------------------------------------------------------------------------------
@@ -126,7 +132,7 @@ void CObject::MultiDie (void)
 info.nFlags |= OF_SHOULD_BE_DEAD;
 #if DBG
 if (this == dbgObjP)
-	dbgObjP = dbgObjP;
+	BRP;
 #endif
 }
 
@@ -134,17 +140,19 @@ if (this == dbgObjP)
 //process a continuously-spinning CObject
 void CObject::Spin (void)
 {
-	CAngleVector vRot;
-	CFixMatrix mRot, mOrient;
+ENTER (0, 0);
+	CAngleVector	vRot;
+	CFixMatrix		mRot, mOrient;
 
 Assert (info.movementType == MT_SPINNING);
-vRot = CAngleVector::Create((fixang) FixMul (mType.spinRate.v.coord.x, gameData.time.xFrame),
-										 (fixang) FixMul (mType.spinRate.v.coord.y, gameData.time.xFrame),
-										 (fixang) FixMul (mType.spinRate.v.coord.z, gameData.time.xFrame));
+vRot = CAngleVector::Create ((fixang) FixMul (mType.spinRate.v.coord.x, gameData.timeData.xFrame),
+									  (fixang) FixMul (mType.spinRate.v.coord.y, gameData.timeData.xFrame),
+									  (fixang) FixMul (mType.spinRate.v.coord.z, gameData.timeData.xFrame));
 mRot = CFixMatrix::Create (vRot);
 mOrient = info.position.mOrient * mRot;
 info.position.mOrient = mOrient;
-info.position.mOrient.CheckAndFix();
+info.position.mOrient.CheckAndFix ();
+RETURN
 }
 
 // -----------------------------------------------------------------------------
@@ -158,6 +166,7 @@ cameraManager.Rotate (this);
 
 void CObject::RotateMarker (void)
 {
+ENTER (0, 0);
 if (m_bRotate && EGI_FLAG (bRotateMarkers, 0, 1, 0) && gameStates.app.tick40fps.bTick) {
 	static time_t	t0 [MAX_DROP_SINGLE] = {0, 0, 0, 0, 0, 0, 0, 0, 0};
 
@@ -171,22 +180,24 @@ if (m_bRotate && EGI_FLAG (bRotateMarkers, 0, 1, 0) && gameStates.app.tick40fps.
 		info.position.mOrient.CheckAndFix ();
 		}
 	}
+RETURN
 }
 
 // -----------------------------------------------------------------------------
 
-int CObject::CheckWallPhysics (void)
+int32_t CObject::CheckWallPhysics (void)
 {
-	int	nType = 0;
-	short nObject = OBJ_IDX (this);
+ENTER (0, 0);
+	int32_t	nType = 0;
+	int16_t nObject = OBJ_IDX (this);
 
 if (info.nType != OBJ_PLAYER)
-	return 0;
-CSegment* segP = SEGMENTS + info.nSegment;
-int sideMask = segP->Masks (info.position.vPos, info.xSize).m_side;
+	RETVAL (0)
+CSegment* pSeg = SEGMENT (info.nSegment);
+int32_t sideMask = pSeg->Masks (info.position.vPos, info.xSize).m_side;
 if (sideMask) {
-	short		nSide;
-	int		bit;
+	int16_t		nSide;
+	int32_t		bit;
 	for (nSide = 0, bit = 1; nSide < SEGMENT_SIDE_COUNT; bit <<= 1, nSide++)
 		if ((sideMask & bit) && (nType = ApplyWallPhysics (info.nSegment, nSide)))
 			break;
@@ -197,10 +208,10 @@ if (!nType)
 // type 2,3: sound caused by ship touching a wall
 // type & 1: lava
 // type & 2: water
-int nSoundObj;
+int32_t nSoundObj;
 
 if (nType) {
-	short nSound;
+	int16_t nSound;
 
 	if (nType == 2)
 		nSound = mType.physInfo.thrust.IsZero () ? 0 : SOUND_SHIP_IN_WATER;
@@ -221,53 +232,60 @@ else {
 		audio.DeleteSoundObject (nSoundObj);
 		}
 	}
-return nType;
+RETVAL (nType)
 }
 
 // -----------------------------------------------------------------------------
 
 void CObject::HandleSegmentFunction (void)
 {
+ENTER (0, 0);
 if ((info.nType == OBJ_PLAYER) && (N_LOCALPLAYER == info.nId)) {
-	CSegment*		segP = SEGMENTS + info.nSegment;
-	CPlayerData*	playerP = gameData.multiplayer.players + N_LOCALPLAYER;
+	CSegment*		pSeg = SEGMENT (info.nSegment);
+	CPlayerData*	pPlayer = gameData.multiplayer.players + N_LOCALPLAYER;
 
-   if (gameData.app.GameMode (GM_CAPTURE))
-		 segP->CheckForGoal ();
+   if (gameData.appData.GameMode (GM_CAPTURE))
+		 pSeg->CheckForGoal ();
    else if (IsHoardGame)
-		 segP->CheckForHoardGoal ();
+		 pSeg->CheckForHoardGoal ();
 	else if (controls [0].forwardThrustTime || controls [0].verticalThrustTime || controls [0].sidewaysThrustTime) {
 		gameStates.entropy.nTimeLastMoved = -1;
 		if (IsEntropyGame &&
-			 ((segP->m_owner < 0) || (segP->m_owner == GetTeam (N_LOCALPLAYER) + 1))) {
+			 ((pSeg->m_owner < 0) || (pSeg->m_owner == GetTeam (N_LOCALPLAYER) + 1))) {
 			StopConquerWarning ();
 			}
 		}
 	else if (gameStates.entropy.nTimeLastMoved < 0)
 		gameStates.entropy.nTimeLastMoved = 0;
 
-	playerP->UpdateShield (-segP->ShieldDamage (playerP->Shield () + 1));
-	playerP->UpdateEnergy (-segP->EnergyDamage (playerP->energy));
-	if (playerP->Shield () < 0)
+	pPlayer->UpdateShield (-pSeg->ShieldDamage (pPlayer->Shield () + 1));
+	pPlayer->UpdateEnergy (-pSeg->EnergyDamage (pPlayer->energy));
+	if (pPlayer->Shield () < 0)
 		StartPlayerDeathSequence (this);
 	else {
-		segP->ConquerCheck ();
-		//CObject* objP = OBJECTS + playerP->nObject;
-		fix energy = segP->Refuel (fix (playerP->InitialEnergy ()) - playerP->Energy ());
+		pSeg->ConquerCheck ();
+		//CObject* pObj = OBJECT (pPlayer->nObject);
+		fix energy = pSeg->Refuel (fix (pPlayer->InitialEnergy ()) - pPlayer->Energy ());
 		if (energy > 0)
-			playerP->UpdateEnergy (energy);
-		fix shield = segP->Repair (fix (playerP->InitialShield ()) - playerP->Shield ());
+			pPlayer->UpdateEnergy (energy);
+		fix shield = pSeg->Repair (fix (pPlayer->InitialShield ()) - pPlayer->Shield ());
 		if (shield > 0) {
-			playerP->UpdateShield (shield);
+			pPlayer->UpdateShield (shield);
 			}
 		}
 	}
+RETURN
 }
 
 // -----------------------------------------------------------------------------
 
-int CObject::UpdateMovement (void)
+int32_t CObject::UpdateMovement (void)
 {
+ENTER (0, 0);
+#if DBG
+if (info.nType == OBJ_REACTOR)
+	BRP;
+#endif
 switch (info.controlType) {
 	case CT_NONE:
 		break;
@@ -277,7 +295,8 @@ switch (info.controlType) {
 		break;
 
 	case CT_REPAIRCEN:
-		Int3 ();	// -- hey!these are no longer supported!!-- do_repair_sequence (this); break;
+		Int3 ();	// -- hey!these are no longer supported!!-- do_repair_sequence (this);
+		break;
 
 	case CT_POWERUP:
 		DoPowerupFrame ();
@@ -296,7 +315,7 @@ switch (info.controlType) {
 			Unstick ();
 			DoAnyRobotDyingFrame (this);
 #if 1//!DBG
-			return 1;
+			RETVAL (1)
 #endif
 			}
 		else if (USE_D1_AI)
@@ -332,40 +351,44 @@ switch (info.controlType) {
 
 	case CT_CNTRLCEN:
 		if (gameStates.app.bGameSuspended & SUSP_ROBOTS)
-			return 1;
+			RETVAL (1)
 		DoReactorFrame (this);
 		break;
+
+	case CT_WAYPOINT:
+		break;		//no movement
 
 	default:
 		Error ("Unknown control nType %d in CObject %i, sig/nType/id = %i/%i/%i", info.controlType, OBJ_IDX (this), info.nSignature, info.nType, info.nId);
 	}
-return 0;
+RETVAL (0)
 }
 
 // -----------------------------------------------------------------------------
 
-static inline int ShipVolume (int nSpeed)
+static inline int32_t ShipVolume (int32_t nSpeed)
 {
 return I2X (1) / 16 + nSpeed / 512;
 }
 
 void CObject::UpdateShipSound (void)
 {
+ENTER (0, 0);
 if (!gameOpts->sound.bShip)
-	return;
+	RETURN;
 
-int nObject = OBJ_IDX (this);
+int32_t nObject = OBJ_IDX (this);
 if (nObject != LOCALPLAYER.nObject)
-	return;
+	RETURN;
 
-int nSpeed = mType.physInfo.velocity.Mag();
+int32_t nSpeed = mType.physInfo.velocity.Mag();
 #if 0
 nSpeed -= I2X (2);
 if (nSpeed < 0)
 	nSpeed = 0;
 #endif
 //if (gameData.multiplayer.bMoving == nSpeed)
-//	return;
+//	RETURN;
 
 if (gameData.multiplayer.bMoving < 0)
 	audio.CreateObjectSound (-1, SOUNDCLASS_PLAYER, OBJ_IDX (this), 1, ShipVolume (nSpeed), I2X (256), -1, -1, 
@@ -373,12 +396,14 @@ if (gameData.multiplayer.bMoving < 0)
 else
 	audio.ChangeObjectSound (OBJ_IDX (this), ShipVolume (nSpeed));
 gameData.multiplayer.bMoving = nSpeed;
+RETURN
 }
 
 // -----------------------------------------------------------------------------
 
 void CObject::UpdatePosition (void)
 {
+ENTER (0, 0);
 if (info.nType == OBJ_MARKER)
 	RotateMarker ();
 
@@ -402,174 +427,201 @@ switch (info.movementType) {
 		Spin ();
 		break;
 	}
+RETURN
 }
 
 // -----------------------------------------------------------------------------
 
-int CObject::CheckTriggerHits (short nPrevSegment)
+int32_t CObject::CheckTriggerHits (int16_t nPrevSegment)
 {
-		short	nConnSide, i;
-		int	nOldLevel;
+ENTER (0, 0);
+		int16_t	nConnSide, i;
+		int32_t	nOldLevel;
 
 if ((info.movementType != MT_PHYSICS) || (nPrevSegment == info.nSegment))
-	return 0;
+	RETVAL (0)
 nOldLevel = missionManager.nCurrentLevel;
-for (i = 0; i < gameData.physics.nSegments - 1; i++) {
-	if (gameData.physics.segments [i] < 0)
+for (i = 0; i < gameData.physicsData.nSegments - 1; i++) {
+	if (gameData.physicsData.segments [i] < 0)
 		continue;
-	if (gameData.physics.segments [i + 1] < 0)
+	if (gameData.physicsData.segments [i + 1] < 0)
 		continue;
 #if DBG
-	if (gameData.physics.segments [i] > gameData.segs.nLastSegment)
-		PrintLog (0, "invalid segment in gameData.physics.segments\n");
+	if (gameData.physicsData.segments [i] > gameData.segData.nLastSegment)
+		PrintLog (0, "invalid segment in gameData.physicsData.segments\n");
 #endif
-	nConnSide = SEGMENTS [gameData.physics.segments [i + 1]].ConnectedSide (SEGMENTS + gameData.physics.segments [i]);
+	nConnSide = SEGMENT (gameData.physicsData.segments [i + 1])->ConnectedSide (SEGMENT (gameData.physicsData.segments [i]));
 	if (nConnSide != -1)
-		SEGMENTS [gameData.physics.segments [i]].OperateTrigger (nConnSide, this, 0);
+		SEGMENT (gameData.physicsData.segments [i])->OperateTrigger (nConnSide, this, 0);
 #if DBG
 	else	// segments are not directly connected, so do binary subdivision until you find connected segments.
-		PrintLog (0, "Unconnected segments %d, %d\n", gameData.physics.segments [i + 1], gameData.physics.segments [i]);
+		PrintLog (0, "Unconnected segments %d, %d\n", gameData.physicsData.segments [i + 1], gameData.physicsData.segments [i]);
 #endif
 	//maybe we've gone on to the next level.  if so, bail!
 	if (missionManager.nCurrentLevel != nOldLevel)
-		return 1;
+		RETVAL (1)
 	}
-return 0;
+RETVAL (0)
 }
 
 // -----------------------------------------------------------------------------
 
-void CObject::CheckGuidedMissileThroughExit (short nPrevSegment)
+void CObject::CheckGuidedMissileThroughExit (int16_t nPrevSegment)
 {
-if ((this == gameData.objs.guidedMissile [N_LOCALPLAYER].objP) &&
-	 (info.nSignature == gameData.objs.guidedMissile [N_LOCALPLAYER].nSignature)) {
+ENTER (0, 0);
+if (IsGuidedMissile (N_LOCALPLAYER)) {
 	if (nPrevSegment != info.nSegment) {
-		short	nConnSide = SEGMENTS [info.nSegment].ConnectedSide (SEGMENTS + nPrevSegment);
+		int16_t nConnSide = SEGMENT (info.nSegment)->ConnectedSide (SEGMENT (nPrevSegment));
 		if (nConnSide != -1) {
-			CTrigger* trigP = SEGMENTS [nPrevSegment].Trigger (nConnSide);
-			if (trigP && (trigP->m_info.nType == TT_EXIT))
-				gameData.objs.guidedMissile [N_LOCALPLAYER].objP->SetLife (0);
+			CTrigger* pTrigger = SEGMENT (nPrevSegment)->Trigger (nConnSide);
+			if (pTrigger && (pTrigger->m_info.nType == TT_EXIT))
+				gameData.objData.guidedMissile [N_LOCALPLAYER].pObj->UpdateLife (0);
 			}
 		}
 	}
+RETURN
 }
 
 // -----------------------------------------------------------------------------
 
 void CObject::CheckAfterburnerBlobDrop (void)
 {
+ENTER (0, 0);
 if (gameStates.render.bDropAfterburnerBlob) {
-	Assert (this == gameData.objs.consoleP);
+	Assert (this == gameData.objData.pConsole);
 	DropAfterburnerBlobs (this, 2, I2X (5) / 2, -1, NULL, 0);	//	-1 means use default lifetime
 	if (IsMultiGame)
-		MultiSendDropBlobs ((char) N_LOCALPLAYER);
+		MultiSendDropBlobs (N_LOCALPLAYER);
 	gameStates.render.bDropAfterburnerBlob = 0;
 	}
 
-if ((info.nType == OBJ_WEAPON) && (gameData.weapons.info [info.nId].nAfterburnerSize)) {
-	int	nObject, bSmoke;
-	fix	vel;
-	fix	delay, lifetime, nSize;
+if (info.nType != OBJ_WEAPON)
+	RETURN;
+
+CWeaponInfo *pWeaponInfo = WEAPONINFO (info.nId);
+
+if (!pWeaponInfo)
+	RETURN;
+
+if (!pWeaponInfo->nAfterburnerSize)
+	RETURN;
+
+	int32_t	bSmoke;
+	fix		delay, lifetime, nSize;
 
 #if 1
-	if (IsMissile ()) {
-		if (SHOW_SMOKE && gameOpts->render.particles.bMissiles)
-			return;
-		if ((gameStates.app.bNostalgia || EGI_FLAG (bThrusterFlames, 1, 1, 0)) &&
-			 (info.nId != MERCURYMSL_ID))
-			return;
-		}
+if (IsMissile ()) {
+	if (SHOW_SMOKE && gameOpts->render.particles.bMissiles)
+		RETURN;
+	if ((gameStates.app.bNostalgia || EGI_FLAG (bThrusterFlames, 1, 1, 0)) &&
+			(info.nId != MERCURYMSL_ID))
+		RETURN;
+	}
 #endif
-	if ((vel = mType.physInfo.velocity.Mag()) > I2X (200))
-		delay = I2X (1) / 16;
-	else if (vel > I2X (40))
-		delay = FixDiv (I2X (13), vel);
-	else
-		delay = DEG90;
+fix vel = mType.physInfo.velocity.Mag ();
 
-	if ((bSmoke = SHOW_SMOKE && gameOpts->render.particles.bMissiles)) {
-		nSize = I2X (3);
-		lifetime = I2X (1) / 12;
-		delay = 0;
-		}
-	else {
-		nSize = I2X (gameData.weapons.info [info.nId].nAfterburnerSize) / 16;
-		lifetime = 3 * delay / 2;
-		if (!IsMultiGame) {
-			delay /= 2;
-			lifetime *= 2;
-			}
-		}
+if (vel > I2X (200))
+	delay = I2X (1) / 16;
+else if (vel > I2X (40))
+	delay = FixDiv (I2X (13), vel);
+else
+	delay = DEG90;
 
-	nObject = OBJ_IDX (this);
-	if (bSmoke ||
-		 (gameData.objs.xLastAfterburnerTime [nObject] + delay < gameData.time.xGame) ||
-		 (gameData.objs.xLastAfterburnerTime [nObject] > gameData.time.xGame)) {
-		DropAfterburnerBlobs (this, 1, nSize, lifetime, NULL, bSmoke);
-		gameData.objs.xLastAfterburnerTime [nObject] = gameData.time.xGame;
+if ((bSmoke = SHOW_SMOKE && gameOpts->render.particles.bMissiles)) {
+	nSize = I2X (3);
+	lifetime = I2X (1) / 12;
+	delay = 0;
+	}
+else {
+	nSize = I2X (pWeaponInfo->nAfterburnerSize) / 16;
+	lifetime = 3 * delay / 2;
+	if (!IsMultiGame) {
+		delay /= 2;
+		lifetime *= 2;
 		}
 	}
+
+int32_t nObject = OBJ_IDX (this);
+if (bSmoke ||
+		(gameData.objData.xLastAfterburnerTime [nObject] + delay < gameData.timeData.xGame) ||
+		(gameData.objData.xLastAfterburnerTime [nObject] > gameData.timeData.xGame)) {
+	DropAfterburnerBlobs (this, 1, nSize, lifetime, NULL, bSmoke);
+	gameData.objData.xLastAfterburnerTime [nObject] = gameData.timeData.xGame;
+	}
+RETURN
 }
 
 // -----------------------------------------------------------------------------
 
 void CObject::UpdateEffects (void)
 {
+ENTER (0, 0);
 	bool bNeedEffect, bHaveEffect = lightningManager.GetObjectSystem (Index ()) >= 0;
-	ubyte nEffect;
+	uint8_t nEffect;
 
 if ((info.nType == OBJ_ROBOT) && gameOpts->render.lightning.bRobots) {
-	bNeedEffect = ROBOTINFO (info.nId).energyDrain && (gameStates.app.nSDLTicks [0] - m_xTimeEnergyDrain <= 1000);
-	nEffect = ROBOT_LIGHTNING;
+	if (!ROBOTINFO (info.nId)) 
+		bNeedEffect = false;
+	else {
+		bNeedEffect = ROBOTINFO (info.nId)->energyDrain && (gameStates.app.nSDLTicks [0] - m_xTimeEnergyDrain <= 1000);
+		nEffect = ROBOT_LIGHTNING;
+		}
+	}
+else if (info.nType == OBJ_POWERUP) {
+	bNeedEffect = gameOpts->render.powerups.b3D && SHOW_LIGHTNING (3) && (info.nId == POW_SHIELD_BOOST);
+	nEffect = SHIELDORB_LIGHTNING;
 	}
 else if ((info.nType == OBJ_PLAYER) && gameOpts->render.lightning.bPlayers) {
 	nEffect = PLAYER_LIGHTNING;
-	int nType = SEGMENTS [OBJSEG (this)].m_function;
+	int32_t nType = SEGMENT (OBJSEG (this))->m_function;
 	if (gameData.FusionCharge (info.nId) > I2X (2))
 		bNeedEffect = true;
 	else if (nType == SEGMENT_FUNC_FUELCENTER)
 #if DBG
 		bNeedEffect = true;
 #else
-		bNeedEffect = gameData.multiplayer.players [info.nId].energy < I2X (100);
+		bNeedEffect = PLAYER (info.nId).energy < I2X (100);
 #endif
 	else if (nType == SEGMENT_FUNC_REPAIRCENTER)
 #if DBG
 		bNeedEffect = true;
 #else
-		bNeedEffect = gameData.multiplayer.players [info.nId].Shield () < gameData.multiplayer.players [info.nId].MaxShield ();
+		bNeedEffect = PLAYER (info.nId).Shield () < PLAYER (info.nId).MaxShield ();
 #endif
 	else
 		bNeedEffect = false;
 	}
-else
-	return;
+else 
+	RETURN;
 if (bHaveEffect != bNeedEffect)
 	RequestEffects (bNeedEffect ? nEffect : DESTROY_LIGHTNING);
+RETURN
 }
 
 // -----------------------------------------------------------------------------
 //move an CObject for the current frame
 
-int CObject::Update (void)
+int32_t CObject::Update (void)
 {
-	short	nPrevSegment = (short) info.nSegment;
+ENTER (0, 0);
+	int16_t	nPrevSegment = (int16_t) info.nSegment;
+	tObjectInfo infoSave;
+
+memcpy (&infoSave, &info, sizeof (tObjectInfo));
 
 #if DBG
-if ((info.nType == OBJ_WEAPON) && (info.nId == SMARTMINE_BLOB_ID)) {
-	nDbgObj = OBJ_IDX (this);
-	nDbgObj = nDbgObj;
-	}
 if (OBJ_IDX (this) == nDbgObj)
-	nDbgObj = nDbgObj;
+	BRP;
 #endif
+if (!FixWeaponObject (this))
+	RETVAL (0)
 if (info.nType == OBJ_ROBOT) {
-	if (gameOpts->gameplay.bNoThief && (!IsMultiGame || IsCoopGame) && ROBOTINFO (info.nId).thief) {
+	if (gameOpts->gameplay.bNoThief && (!IsMultiGame || IsCoopGame) && ROBOTINFO (info.nId) && ROBOTINFO (info.nId)->thief) {
 #if 1
 		ApplyDamageToRobot (info.xShield + I2X (1), -1);
 #else
 		SetShield (0);
-		SetLife (0);
+		UpdateLife (0);
 		Die ();
 #endif
 		}
@@ -579,162 +631,182 @@ if (info.nType == OBJ_ROBOT) {
 			SetShield (xMaxShield);
 		}
 	}
-info.vLastPos = info.position.vPos;			// Save the current position
 RepairDamage ();
 HandleSegmentFunction ();
-if ((info.xLifeLeft != IMMORTAL_TIME) && (info.xLifeLeft != ONE_FRAME_TIME) && (gameData.physics.xTime > 0))
-	info.xLifeLeft -= (fix) (gameData.physics.xTime / gameStates.gameplay.slowmo [0].fSpeed);		//...inevitable countdown towards death
+if ((info.xLifeLeft != IMMORTAL_TIME) && (info.xLifeLeft != ONE_FRAME_TIME) && (gameData.physicsData.xTime > 0))
+	info.xLifeLeft -= (fix) (gameData.physicsData.xTime / gameStates.gameplay.slowmo [0].fSpeed);		//...inevitable countdown towards death
 gameStates.render.bDropAfterburnerBlob = 0;
-if ((gameData.physics.xTime > 0) && UpdateMovement ()) {
+if ((gameData.physicsData.xTime > 0) && UpdateMovement ()) {
 	UpdateEffects ();
-	return 1;
+	RETVAL (1)
 	}
 if (info.xLifeLeft < 0) {		// We died of old age
 	Die ();
-	if ((info.nType == OBJ_WEAPON) && WI_damage_radius (info.nId))
+	if ((info.nType == OBJ_WEAPON) && WI_DamageRadius (info.nId))
 		ExplodeSplashDamageWeapon (info.position.vPos);
 	else if (info.nType == OBJ_ROBOT)	//make robots explode
 		Explode (0);
 	}
 if ((info.nType == OBJ_NONE) || (info.nFlags & OF_SHOULD_BE_DEAD)) {
-	return 1;			//CObject has been deleted
+	RETVAL (1)			//CObject has been deleted
 	}
 UpdatePosition ();
 UpdateEffects ();
 if (CheckTriggerHits (nPrevSegment))
-	return 0;
+	RETVAL (0)
 CheckWallPhysics ();
 CheckGuidedMissileThroughExit (nPrevSegment);
 CheckAfterburnerBlobDrop ();
-return 1;
+RETVAL (1)
 }
 
 // -----------------------------------------------------------------------------
 //move all OBJECTS for the current frame
 
-int UpdateAllObjects (void)
+int32_t UpdateAllObjects (void)
 {
+ENTER (0, 0);
 PROF_START
-	CObject*	objP, * nextObjP;
+	CObject*	pObj;
 
-if (gameData.objs.nLastObject [0] > gameData.objs.nMaxUsedObjects)
-	FreeObjectSlots (gameData.objs.nMaxUsedObjects);		//	Free all possible CObject slots.
+if (gameData.objData.nLastObject [0] > gameData.objData.nMaxUsedObjects)
+	FreeObjectSlots (gameData.objData.nMaxUsedObjects);		//	Free all possible CObject slots.
 CleanupObjects ();
 if (gameOpts->gameplay.nAutoLeveling)
-	gameData.objs.consoleP->mType.physInfo.flags |= PF_LEVELLING;
+	gameData.objData.pConsole->mType.physInfo.flags |= PF_LEVELLING;
 else
-	gameData.objs.consoleP->mType.physInfo.flags &= ~PF_LEVELLING;
-gameData.physics.xTime = gameData.time.xFrame;
-gameData.laser.xUpdateTime %= I2X (1) / 40;
-gameData.laser.xUpdateTime += gameData.time.xFrame;
+	gameData.objData.pConsole->mType.physInfo.flags &= ~PF_LEVELLING;
+gameData.physicsData.xTime = gameData.timeData.xFrame;
+gameData.laserData.xUpdateTime %= HOMING_WEAPON_FRAMETIME;
+gameData.laserData.xUpdateTime += gameData.timeData.xFrame;
 // Move all OBJECTS
 gameStates.entropy.bConquering = 0;
 UpdatePlayerOrient ();
 #if USE_OPENMP //> 1
-gameData.objs.update.Reset ();
+gameData.objData.update.Reset ();
 #endif
-++gameData.objs.nFrameCount;
-for (objP = gameData.objs.lists.all.head; objP; objP = nextObjP) {
-	nextObjP = objP->Links (0).next;
-	if ((objP->info.nType != OBJ_NONE) && (objP->info.nType != OBJ_GHOST) && !(objP->info.nFlags & OF_SHOULD_BE_DEAD) && !objP->Update ()) {
-		return 0;
-		PROF_END(ptUpdateObjects)
+++gameData.objData.nFrameCount;
+FORALL_OBJS (pObj) {
+#if DBG
+	if (pObj->info.nType == OBJ_REACTOR)
+		BRP;
+#endif
+	if ((pObj->info.nType != OBJ_NONE) && (pObj->info.nType != OBJ_GHOST) && !(pObj->info.nFlags & OF_SHOULD_BE_DEAD) && !pObj->Update ()) {
+		PROF_END(ptObjectStates)
+		RETVAL (0)
 		}
 #if DBG
-	if (objP->IsRobot ()) 
-		objP->CheckSpeed ();
+	if (pObj->IsRobot ()) 
+		pObj->CheckSpeed ();
 #endif
 	}
 
 #if USE_OPENMP //> 1
 #pragma omp parallel 
 if (gameStates.app.bMultiThreaded) {
-	int h = int (gameData.objs.update.ToS ());
+	int32_t h = int32_t (gameData.objData.update.ToS ());
 	#pragma omp for
-	for (int nThread = 0; nThread < gameStates.app.nThreads; nThread++) {
-		for (int i = nThread; i < h; i += gameStates.app.nThreads)
-			gameData.objs.update [i]->UpdateHomingWeapon (nThread);
+	for (int32_t nThread = 0; nThread < gameStates.app.nThreads; nThread++) {
+		for (int32_t i = nThread; i < h; i += gameStates.app.nThreads)
+			gameData.objData.update [i]->UpdateHomingWeapon (nThread);
 		}
 	}
 #endif
 
-PROF_END(ptUpdateObjects)
-return 1;
+PROF_END(ptObjectStates)
+RETVAL (1)
 }
 
 //----------------------------------------------------------------------------------------
 
-//	*viewerP is a viewerP, probably a missile.
+//	*pViewer is a pViewer, probably a missile.
 //	wake up all robots that were rendered last frame subject to some constraints.
-void WakeupRenderedObjects (CObject *viewerP, int nWindow)
+void WakeupRenderedObjects (CObject *pViewer, int32_t nWindow)
 {
+ENTER (0, 0);
 //	Make sure that we are processing current data.
-if (gameData.app.nFrameCount != windowRenderedData [nWindow].nFrame) {
+if (gameData.appData.nFrameCount != windowRenderedData [nWindow].nFrame) {
 #if TRACE
 		console.printf (1, "Warning: Called WakeupRenderedObjects with a bogus window.\n");
 #endif
 	return;
 	}
 
-gameData.ai.nLastMissileCamera = OBJ_IDX (viewerP);
-int frameFilter = gameData.app.nFrameCount & 3;
-for (int i = windowRenderedData [nWindow].nObjects; i; ) {
-	int nObject = windowRenderedData [nWindow].renderedObjects [--i];
+gameData.aiData.nLastMissileCamera = OBJ_IDX (pViewer);
+int32_t frameFilter = gameData.appData.nFrameCount & 3;
+for (int32_t i = windowRenderedData [nWindow].nObjects; i; ) {
+	int32_t nObject = windowRenderedData [nWindow].renderedObjects [--i];
 	if ((nObject & 3) == frameFilter) {
-		CObject* objP = OBJECTS + nObject;
-		if (objP->info.nType == OBJ_ROBOT) {
-			if (CFixVector::Dist (viewerP->info.position.vPos, objP->info.position.vPos) < I2X (100)) {
-				tAILocalInfo* ailP = gameData.ai.localInfo + nObject;
-				if (ailP->targetAwarenessType == 0) {
-					objP->cType.aiInfo.SUB_FLAGS |= SUB_FLAGS_CAMERA_AWAKE;
-					ailP->targetAwarenessType = WEAPON_ROBOT_COLLISION;
-					ailP->targetAwarenessTime = I2X (3);
-					ailP->nPrevVisibility = 2;
+		CObject* pObj = OBJECT (nObject);
+		if (pObj->info.nType == OBJ_ROBOT) {
+			if (CFixVector::Dist (pViewer->info.position.vPos, pObj->info.position.vPos) < I2X (100)) {
+				tAILocalInfo* pLocalInfo = gameData.aiData.localInfo + nObject;
+				if (pLocalInfo->targetAwarenessType == 0) {
+					pObj->cType.aiInfo.SUB_FLAGS |= SUB_FLAGS_CAMERA_AWAKE;
+					pLocalInfo->targetAwarenessType = WEAPON_ROBOT_COLLISION;
+					pLocalInfo->targetAwarenessTime = I2X (3);
+					pLocalInfo->nPrevVisibility = 2;
 					}
 				}
 			}
 		}
 	}
+RETURN
 }
 
 //------------------------------------------------------------------------------
 
 void CleanupObjects (void)
 {
-	CObject	*objP, *nextObjP = NULL;
-	int		nLocalDeadPlayerObj = -1;
+ENTER (0, 0);
+	CObject*		pObj, *pPrevObj;
+	int32_t		nLocalDeadPlayerObj = -1;
 
-for (objP = gameData.objs.lists.all.head; objP; objP = nextObjP) {
-	nextObjP = objP->Links (0).next;
-	if (objP->info.nType == OBJ_NONE)
+for (CObjectIterator iter (pObj); pObj; pObj = (pPrevObj ? iter.Step () : iter.Start ())) {
+	pPrevObj = pObj;
+	if (pObj->info.nType == OBJ_NONE)
 		continue;
-	if (!(objP->info.nFlags & OF_SHOULD_BE_DEAD))
+	if (!(pObj->info.nFlags & OF_SHOULD_BE_DEAD))
 		continue;
-	//Assert ((objP->info.nType != OBJ_FIREBALL) || (objP->cType.explInfo.nDeleteTime == -1));
-	if (objP->info.nType != OBJ_PLAYER)
-		ReleaseObject (objP->Index ());
-	else {
-		if (objP->info.nId == N_LOCALPLAYER) {
+	if (pObj->info.nType == OBJ_PLAYER) {
+		if (pObj->info.nId == N_LOCALPLAYER) {
 			if (nLocalDeadPlayerObj == -1) {
-				StartPlayerDeathSequence (objP);
-				nLocalDeadPlayerObj = objP->Index ();
+				StartPlayerDeathSequence (pObj);
+				nLocalDeadPlayerObj = pObj->Index ();
 				}
-			else
-				Int3 ();
 			}
 		}
+	else {
+		pPrevObj = iter.Back ();
+		if ((pObj->info.nType == OBJ_ROBOT) ||
+			 (pObj->info.nType == OBJ_DEBRIS) ||	// exploded robot
+			 (pObj->info.nType == OBJ_REACTOR) ||
+			 (pObj->info.nType == OBJ_POWERUP) ||
+			 (pObj->info.nType == OBJ_HOSTAGE))
+			ExecObjTriggers (pObj->Index (), 0);
+		ReleaseObject (pObj->Index ());
+		}
 	}
+RETURN
 }
 
 //	-----------------------------------------------------------------------------------------------------------
 
 #if DBG
-void CObject::SetLife (fix xLife)
+
+void CObject::UpdateLife (fix xLife)
 {
 info.xLifeLeft = xLife;
 if (Index () == nDbgObj)
-	nDbgObj = nDbgObj;
+	BRP;
 }
+
+
+void CObject::SetLife (fix xLife)
+{
+UpdateLife (m_xTotalLife = xLife);
+}
+
 #endif
 
 //	-----------------------------------------------------------------------------------------------------------

@@ -22,28 +22,29 @@ typedef struct tPathPoint {
 	CFixVector			vPos;
 	CFixVector			vOrgPos;
 	CFixMatrix			mOrient;
+	bool					bFlipped;
 } tPathPoint;
 
-class CFlightPath {
+class CFpLightath {
 	public:
 		CArray<tPathPoint>	m_path; // [MAX_PATH_POINTS];
 		tPathPoint*				m_posP;
-		int						m_nSize;
-		int						m_nStart;
-		int						m_nEnd;
+		int32_t					m_nSize;
+		int32_t					m_nStart;
+		int32_t					m_nEnd;
 		time_t					m_tRefresh;
 		time_t					m_tUpdate;
+
 	public:
-		CFlightPath ();
-		void SetPoint (CObject *objP);
+		CFpLightath ();
+		void Update (CObject *pObj);
 		tPathPoint *GetPoint (void);
-		void GetViewPoint (void);
-		void Reset (int nSize, int nFPS);
-		tPathPoint* GetPos (void) { return m_posP; }
-		inline tPathPoint* Pos (void) { return m_posP; }
-		inline void SetPos (tPathPoint *posP) { m_posP = posP; }
+		void GetViewPoint (CFixVector* vPos = NULL);
+		void Reset (int32_t nSize, int32_t nFPS);
+		inline tPathPoint* Tail (void) { return m_posP; }
+		inline void SetPos (tPathPoint *pPos) { m_posP = pPos; }
 };
 
-extern CFlightPath externalView;
+#define FLIGHTPATH		PLAYER (LOCALPLAYER.ObservedPlayer ()).FpLightath ()
 
 #endif /* _FLIGHTPATH_H */

@@ -27,18 +27,18 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #define MAX_VECS 10000
 
 typedef struct tMorphInfo {
-	CObject			*objP;                                // CObject which is morphing
+	CObject			*pObj;                                // CObject which is morphing
 	CFixVector		vecs [MAX_VECS];
 	CFixVector		deltas [MAX_VECS];
 	fix				times [MAX_VECS];
-	int				submodelActive [MAX_SUBMODELS];         // which submodels are active
-	int				nMorphingPoints [MAX_SUBMODELS];       // how many active points in each part
-	int				submodelStartPoints [MAX_SUBMODELS];    // first point for each submodel
-	int				nSubmodelsActive;
-	ubyte				saveControlType;
-	ubyte				saveMovementType;
+	int32_t				submodelActive [MAX_SUBMODELS];         // which submodels are active
+	int32_t				nMorphingPoints [MAX_SUBMODELS];       // how many active points in each part
+	int32_t				submodelStartPoints [MAX_SUBMODELS];    // first point for each submodel
+	int32_t				nSubmodelsActive;
+	uint8_t				saveControlType;
+	uint8_t				saveMovementType;
 	tPhysicsInfo	savePhysInfo;
-	int				nSignature;
+	int32_t				nSignature;
 } __pack__ tMorphInfo;
 
 #define MAX_MORPH_OBJECTS 250

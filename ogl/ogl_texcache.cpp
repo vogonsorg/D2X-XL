@@ -32,159 +32,158 @@
 #include "ogl_lib.h"
 #include "ogl_texture.h"
 #include "ogl_texcache.h"
+#include "addon_bitmaps.h"
 #include "texmerge.h"
 #include "renderlib.h"
 #include "menu.h"
 
-static int bLoadTextures = 0;
+static int32_t bLoadTextures = 1;
 
-static CStaticArray< bool, MAX_VCLIPS >	bVClipLoaded;
+static CStaticArray< bool, MAX_ANIMATIONS_D2 >	bVClipLoaded;
 
 //------------------------------------------------------------------------------
 
-void OglCachePolyModelTextures (int nModel)
+void OglCachePolyModelTextures (int32_t nModel)
 {
-	CPolyModel* modelP = GetPolyModel (NULL, NULL, nModel, 0);
+	CPolyModel* pModel = GetPolyModel (NULL, NULL, nModel, 0);
 
-if (modelP)
-	modelP->LoadTextures (NULL);
+if (pModel)
+	pModel->LoadTextures (NULL);
 }
 
 //------------------------------------------------------------------------------
 
-static CBitmap* OglCacheTexture (int nIndex, int nTranspType)
+static CBitmap* OglCacheTexture (int32_t nIndex, int32_t nTranspType)
 {
-LoadTexture (nIndex, 0);
-CBitmap* bmP = &gameData.pig.tex.bitmaps [0][nIndex];
-bmP->SetTranspType (nTranspType);
-bmP->SetupTexture (1, bLoadTextures);
-return bmP;
+LoadTexture (nIndex, 0, 0);
+CBitmap* pBm = &gameData.pigData.tex.bitmaps [0][nIndex];
+pBm->SetTranspType (nTranspType);
+pBm->SetupTexture (1, bLoadTextures);
+return pBm;
 }
 
 //------------------------------------------------------------------------------
 
-static void OglCacheVClipTextures (tVideoClip* vcP, int nTranspType)
+static void OglCacheAnimationTextures (tAnimationInfo* pAnimInfo, int32_t nTranspType)
 {
-for (int i = 0; i < vcP->nFrameCount; i++) {
+for (int32_t i = 0; i < pAnimInfo->nFrameCount; i++) {
 #if DBG
-	int h = vcP->frames [i].index;
+	int32_t h = pAnimInfo->frames [i].index;
 	if ((nDbgTexture >= 0) && (h == nDbgTexture))
-		nDbgTexture = nDbgTexture;
+		BRP;
 #endif
-	CBitmap* bmP = OglCacheTexture (vcP->frames [i].index, nTranspType);
-	if (!i && bmP->Override ())
-		SetupHiresVClip (vcP, NULL, bmP->Override ());
+	CBitmap* pBm = OglCacheTexture (pAnimInfo->frames [i].index, nTranspType);
+	if (!i && pBm->Override ())
+		SetupHiresVClip (pAnimInfo, NULL, pBm->Override ());
 	}
 }
 
 //------------------------------------------------------------------------------
 
-static void OglCacheVClipTextures (int i, int nTransp)
+static void OglCacheAnimationTextures (int32_t i, int32_t nTransp)
 {
 if ((i >= 0) && !bVClipLoaded [i]) {
 	bVClipLoaded [i] = true;
-#if DBG
-	if (i == 19)
-		i = i;
-#endif
-	OglCacheVClipTextures (&gameData.effects.vClips [0][i], nTransp);
+	OglCacheAnimationTextures (&gameData.effectData.animations [0][i], nTransp);
 	}
 }
 
 //------------------------------------------------------------------------------
 
-static void OglCacheWeaponTextures (CWeaponInfo* wi)
+static void OglCacheWeaponTextures (CWeaponInfo* pWeaponInfo)
 {
-OglCacheVClipTextures (wi->nFlashVClip, 1);
-OglCacheVClipTextures (wi->nRobotHitVClip, 1);
-OglCacheVClipTextures (wi->nWallHitVClip, 1);
-if (wi->renderType == WEAPON_RENDER_BLOB)
-	OglCacheTexture (wi->bitmap.index, 1);
-else if (wi->renderType == WEAPON_RENDER_VCLIP)
-	OglCacheVClipTextures (wi->nVClipIndex, 3);
-else if (wi->renderType == WEAPON_RENDER_POLYMODEL)
-	OglCachePolyModelTextures (wi->nModel);
+if (pWeaponInfo) {
+	OglCacheAnimationTextures (pWeaponInfo->nFlashAnimation, 1);
+	OglCacheAnimationTextures (pWeaponInfo->nRobotHitAnimation, 1);
+	OglCacheAnimationTextures (pWeaponInfo->nWallHitAnimation, 1);
+	if (pWeaponInfo->renderType == WEAPON_RENDER_BLOB)
+		OglCacheTexture (pWeaponInfo->bitmap.index, 1);
+	else if (pWeaponInfo->renderType == WEAPON_RENDER_VCLIP)
+		OglCacheAnimationTextures (pWeaponInfo->nAnimationIndex, 3);
+	else if (pWeaponInfo->renderType == WEAPON_RENDER_POLYMODEL)
+		OglCachePolyModelTextures (pWeaponInfo->nModel);
+	}
 }
 
 //------------------------------------------------------------------------------
 
 #if 0
 
-static CBitmap *OglLoadFaceBitmap (short nTexture, short nFrameIdx, int bLoadTextures)
+static CBitmap *OglLoadFaceBitmap (int16_t nTexture, int16_t nFrameIdx, int32_t bLoadTextures)
 {
-	CBitmap*	bmP, * bmoP, * bmfP;
-	int		nFrames;
+	CBitmap*	pBm, * pBmo, * pBmf;
+	int32_t		nFrames;
 
-LoadTexture (gameData.pig.tex.bmIndexP [nTexture].index, gameStates.app.bD1Mission);
-bmP = gameData.pig.tex.bitmapP + gameData.pig.tex.bmIndexP [nTexture].index;
-bmP->SetStatic (1);
-if (!(bmoP = bmP->Override ()))
-	return bmP;
-bmoP->SetStatic (1);
-if (!bmoP->WallAnim ())
-	return bmoP;
-if (2 > (nFrames = bmoP->FrameCount ()))
-	return bmoP;
-bmoP->SetTranspType (3);
-bmoP->SetupTexture (1, bLoadTextures);
-if (!(bmfP = bmoP->Frames ()))
-	return bmoP;
+LoadTexture (gameData.pigData.tex.pBmIndex [nTexture].index, 0, gameStates.app.bD1Mission);
+pBm = gameData.pigData.tex.pBitmap + gameData.pigData.tex.pBmIndex [nTexture].index;
+pBm->SetStatic (1);
+if (!(pBmo = pBm->Override ()))
+	return pBm;
+pBmo->SetStatic (1);
+if (!pBmo->WallAnim ())
+	return pBmo;
+if (2 > (nFrames = pBmo->FrameCount ()))
+	return pBmo;
+pBmo->SetTranspType (3);
+pBmo->SetupTexture (1, bLoadTextures);
+if (!(pBmf = pBmo->Frames ()))
+	return pBmo;
 if ((nFrameIdx < 0) && (nFrames >= -nFrameIdx))
-	bmfP -= (nFrameIdx + 1);
-bmoP->SetCurFrame (bmfP);
-bmfP->SetTranspType (3);
-bmfP->SetupTexture (1, bLoadTextures);
-bmfP->SetStatic (1);
-return bmP;
+	pBmf -= (nFrameIdx + 1);
+pBmo->SetCurFrame (pBmf);
+pBmf->SetTranspType (3);
+pBmf->SetupTexture (1, bLoadTextures);
+pBmf->SetStatic (1);
+return pBm;
 }
 
 #endif
 
 //------------------------------------------------------------------------------
 
-static void CacheSideTextures (int nSegment)
+static void CacheSideTextures (int32_t nSegment)
 {
-	short			nSide, tMap1, tMap2;
-	CBitmap*		bmP, * bm2, * bmm;
-	CSide*		sideP;
-	CSegment*	segP = SEGMENTS + nSegment;
+	int16_t			nSide, tMap1, tMap2;
+	CBitmap*		pBm, * bm2, * bmm;
+	CSide*		pSide;
+	CSegment*	pSeg = SEGMENT (nSegment);
 
 for (nSide = 0; nSide < SEGMENT_SIDE_COUNT; nSide++) {
-	sideP = segP->m_sides + nSide;
-	if (!sideP->FaceCount ())
+	pSide = pSeg->m_sides + nSide;
+	if (!pSide->FaceCount ())
 		continue;
-	tMap1 = sideP->m_nBaseTex;
-	if ((tMap1 < 0) || (tMap1 >= gameData.pig.tex.nTextures [gameStates.app.bD1Data]))
+	tMap1 = pSide->m_nBaseTex;
+	if ((tMap1 < 0) || (tMap1 >= gameData.pigData.tex.nTextures [gameStates.app.bD1Data]))
 		continue;
-	bmP = LoadFaceBitmap (tMap1, sideP->m_nFrame, bLoadTextures);
-	if ((tMap2 = sideP->m_nOvlTex)) {
-		bm2 = LoadFaceBitmap (tMap1, sideP->m_nFrame, bLoadTextures);
+	pBm = LoadFaceBitmap (tMap1, pSide->m_nFrame, bLoadTextures);
+	if ((tMap2 = pSide->m_nOvlTex)) {
+		bm2 = LoadFaceBitmap (tMap1, pSide->m_nFrame, bLoadTextures);
 		bm2->SetTranspType (3);
 		if (/*!(bm2->Flags () & BM_FLAG_SUPER_TRANSPARENT) ||*/ gameOpts->ogl.bGlTexMerge)
 			bm2->SetupTexture (1, bLoadTextures);
-		else if ((bmm = TexMergeGetCachedBitmap (tMap1, tMap2, sideP->m_nOvlOrient)))
-			bmP = bmm;
+		else if ((bmm = TexMergeGetCachedBitmap (tMap1, tMap2, pSide->m_nOvlOrient)))
+			pBm = bmm;
 		else
 			bm2->SetupTexture (1, bLoadTextures);
 		}
-	bmP->SetTranspType (3);
-	bmP->SetupTexture (1, bLoadTextures);
+	pBm->SetTranspType (3);
+	pBm->SetupTexture (1, bLoadTextures);
 	}
 }
 
 //------------------------------------------------------------------------------
 
-static int nCacheSeg = 0;
-static int nCacheObj = -3;
+static int32_t nCacheSeg = 0;
+static int32_t nCacheObj = -3;
 
-static int TexCachePoll (CMenu& menu, int& key, int nCurItem, int nState)
+static int32_t TexCachePoll (CMenu& menu, int32_t& key, int32_t nCurItem, int32_t nState)
 {
 if (nState)
 	return nCurItem;
 
-if (nCacheSeg < gameData.segs.nSegments)
+if (nCacheSeg < gameData.segData.nSegments)
 	CacheSideTextures (nCacheSeg++);
-else if (nCacheObj <= gameData.objs.nLastObject [0]) 
+else if (nCacheObj <= gameData.objData.nLastObject [0]) 
 	CacheSideTextures (nCacheObj++);
 else {
 	key = -2;
@@ -198,12 +197,12 @@ return nCurItem;
 
 //------------------------------------------------------------------------------
 
-int OglCacheTextures (void)
+int32_t OglCacheTextures (void)
 {
 	CMenu	m (3);
-	int	i;
+	int32_t	i;
 
-m.AddGauge ("progress bar", "                    ", -1, gameData.segs.nSegments + gameData.objs.nLastObject [0] + 4); 
+m.AddGauge ("progress bar", "                    ", -1, gameData.segData.nSegments + gameData.objData.nLastObject [0] + 4); 
 nCacheSeg = 0;
 nCacheObj = -3;
 do {
@@ -216,28 +215,31 @@ return 1;
 
 static void CacheAddonTextures (void)
 {
-	int	i;
-
-for (i = 0; i < MAX_ADDON_BITMAP_FILES; i++) {
+for (int32_t i = 0; i < MAX_ADDON_BITMAP_FILES; i++) {
 	PageInAddonBitmap (-i - 1);
-	BM_ADDON (i)->SetTranspType (0);
-	BM_ADDON (i)->SetupTexture (1, 1); 
+	CBitmap *pBm = BM_ADDON (i);
+	if (pBm) {
+		pBm->SetCartoonizable (i < 2);
+		pBm->SetTranspType (0);
+		pBm->SetupTexture (1, 1); 
+		}
 	}
+CAddonBitmap::Prepare ();
 }
 
 //------------------------------------------------------------------------------
 
-int OglCacheLevelTextures (void)
+int32_t OglCacheLevelTextures (void)
 {
-	int				i, j, bD1;
-	tEffectClip*	ecP;
-	int				max_efx = 0, ef;
-	int				nSegment, nSide;
-	short				nBaseTex, nOvlTex;
+	int32_t			i, j, bD1;
+	tEffectInfo*	pEffectInfo;
+	int32_t			max_efx = 0, ef;
+	int32_t			nSegment, nSide;
+	int16_t			nBaseTex, nOvlTex;
 	CBitmap*			bmBot,* bmTop, * bmm;
-	CSegment*		segP;
-	CSide*			sideP;
-	CObject*			objP;
+	CSegment*		pSeg;
+	CSide*			pSide;
+	CObject*			pObj;
 	CStaticArray< bool, MAX_POLYGON_MODELS >	bModelLoaded;
 
 if (gameStates.render.bBriefing)
@@ -248,41 +250,43 @@ TexMergeInit (-1);
 
 PrintLog (1, "caching effect textures\n");
 for (bD1 = 0; bD1 <= gameStates.app.bD1Data; bD1++) {
-	for (i = 0, ecP = gameData.effects.effects [bD1].Buffer (); i < gameData.effects.nEffects [bD1]; i++, ecP++) {
-		if ((ecP->changingWallTexture == -1) && (ecP->changingObjectTexture == -1))
+	for (i = 0, pEffectInfo = gameData.effectData.effects [bD1].Buffer (); i < gameData.effectData.nEffects [bD1]; i++, pEffectInfo++) {
+		if ((pEffectInfo->changing.nWallTexture == -1) && (pEffectInfo->changing.nObjectTexture == -1))
 			continue;
-		if (ecP->vClipInfo.nFrameCount > max_efx)
-			max_efx = ecP->vClipInfo.nFrameCount;
+		if (pEffectInfo->animationInfo.nFrameCount > max_efx)
+			max_efx = pEffectInfo->animationInfo.nFrameCount;
 		}
 	for (ef = 0; ef < max_efx; ef++)
-		for (i = 0, ecP = gameData.effects.effects [bD1].Buffer (); i < gameData.effects.nEffects [bD1]; i++, ecP++) {
-			if ((ecP->changingWallTexture == -1) && (ecP->changingObjectTexture == -1))
+		for (i = 0, pEffectInfo = gameData.effectData.effects [bD1].Buffer (); i < gameData.effectData.nEffects [bD1]; i++, pEffectInfo++) {
+			if ((pEffectInfo->changing.nWallTexture == -1) && (pEffectInfo->changing.nObjectTexture == -1))
 				continue;
-			ecP->xTimeLeft = -1;
+			pEffectInfo->xTimeLeft = -1;
 			}
 	}
 PrintLog (-1);
 
+gameStates.render.EnableCartoonStyle (1, 1, 1);
+
 PrintLog (1, "caching geometry textures\n");
-bLoadTextures = (ogl.m_states.nPreloadTextures > 0);
-for (segP = SEGMENTS.Buffer (), nSegment = 0; nSegment < gameData.segs.nSegments; nSegment++, segP++) {
-	for (nSide = 0, sideP = segP->m_sides; nSide < SEGMENT_SIDE_COUNT; nSide++, sideP++) {
-		if (!sideP->FaceCount ())
+// bLoadTextures = (ogl.m_states.nPreloadTextures > 0);
+for (pSeg = SEGMENTS.Buffer (), nSegment = 0; nSegment < gameData.segData.nSegments; nSegment++, pSeg++) {
+	for (nSide = 0, pSide = pSeg->m_sides; nSide < SEGMENT_SIDE_COUNT; nSide++, pSide++) {
+		if (!pSide->FaceCount ())
 			continue;
-		nBaseTex = sideP->m_nBaseTex;
-		if ((nBaseTex < 0) || (nBaseTex >= gameData.pig.tex.nTextures [gameStates.app.bD1Data]))
+		nBaseTex = pSide->m_nBaseTex;
+		if ((nBaseTex < 0) || (nBaseTex >= gameData.pigData.tex.nTextures [gameStates.app.bD1Data]))
 			continue;
 #if DBG
 		if ((nSegment == nDbgSeg) && ((nDbgSide < 0) || (nSide == nDbgSide)))
-			nDbgSeg = nDbgSeg;
+			BRP;
 #endif
-		bmBot = LoadFaceBitmap (nBaseTex, sideP->m_nFrame, bLoadTextures);
-		if ((nOvlTex = sideP->m_nOvlTex)) {
-			bmTop = LoadFaceBitmap (nOvlTex, sideP->m_nFrame, bLoadTextures);
+		bmBot = LoadFaceBitmap (nBaseTex, pSide->m_nFrame, bLoadTextures);
+		if ((nOvlTex = pSide->m_nOvlTex)) {
+			bmTop = LoadFaceBitmap (nOvlTex, pSide->m_nFrame, bLoadTextures);
 			bmTop->SetTranspType (3);
 			if (gameOpts->ogl.bGlTexMerge) // || !(bmTop->Flags () & BM_FLAG_SUPER_TRANSPARENT))
 				bmTop->SetupTexture (1, bLoadTextures);
-			else if ((bmm = TexMergeGetCachedBitmap (nBaseTex, nOvlTex, sideP->m_nOvlOrient)))
+			else if ((bmm = TexMergeGetCachedBitmap (nBaseTex, nOvlTex, pSide->m_nOvlOrient)))
 				bmBot = bmm;
 			else
 				bmTop->SetupTexture (1, bLoadTextures);
@@ -294,53 +298,64 @@ for (segP = SEGMENTS.Buffer (), nSegment = 0; nSegment < gameData.segs.nSegments
 PrintLog (-1);
 
 PrintLog (1, "caching addon textures\n");
+//gameStates.render.DisableCartoonStyle ();
 CacheAddonTextures ();
+//gameStates.render.EnableCartoonStyle ();
 PrintLog (-1);
 
 PrintLog (1, "caching model textures\n");
-bLoadTextures = (ogl.m_states.nPreloadTextures > 1);
+// bLoadTextures = (ogl.m_states.nPreloadTextures > 1);
 bModelLoaded.Clear ();
 bVClipLoaded.Clear ();
-FORALL_OBJS (objP, i) {
-	if (objP->info.renderType != RT_POLYOBJ)
+FORALL_OBJS (pObj) {
+	if (pObj->info.renderType != RT_POLYOBJ)
 		continue;
-	if (bModelLoaded [objP->ModelId ()])
+	if (bModelLoaded [pObj->ModelId ()])
 		continue;
-	bModelLoaded [objP->ModelId ()] = true;
-	OglCachePolyModelTextures (objP->ModelId ());
+	bModelLoaded [pObj->ModelId ()] = true;
+	OglCachePolyModelTextures (pObj->ModelId ());
 	}
 PrintLog (-1);
 
+gameStates.render.DisableCartoonStyle ();
+gameStates.render.EnableCartoonStyle (0, 0, 1);
+
 PrintLog (1, "caching hostage sprites\n");
-bLoadTextures = (ogl.m_states.nPreloadTextures > 3);
-OglCacheVClipTextures (33, 3);    
+// bLoadTextures = (ogl.m_states.nPreloadTextures > 3);
+OglCacheAnimationTextures (33, 3);    
 PrintLog (-1);
+
+gameStates.render.DisableCartoonStyle ();
 
 PrintLog (1, "caching weapon sprites\n");
-bLoadTextures = (ogl.m_states.nPreloadTextures > 5);
-for (i = 0; i < EXTRA_OBJ_IDS; i++)
-	OglCacheWeaponTextures (gameData.weapons.info + i);
+// bLoadTextures = (ogl.m_states.nPreloadTextures > 5);
+for (i = 0, j = (gameStates.app.bD1Mission ? D1_MAX_WEAPON_TYPES : EXTRA_OBJ_IDS); i < j; i++)
+	OglCacheWeaponTextures (WEAPONINFO (i));
 PrintLog (-1);
 
+gameStates.render.EnableCartoonStyle (0, 0, 1);
+
 PrintLog (1, "caching powerup sprites\n");
-bLoadTextures = (ogl.m_states.nPreloadTextures > 4);
+// bLoadTextures = (ogl.m_states.nPreloadTextures > 4);
 for (i = 0; i < MAX_POWERUP_TYPES; i++)
 	if (i != 9)
-		OglCacheVClipTextures (gameData.objs.pwrUp.info [i].nClipIndex, 3);
+		OglCacheAnimationTextures (gameData.objData.pwrUp.info [i].nClipIndex, 3);
 PrintLog (-1);
 
 PrintLog (1, "caching effect textures\n");
 CacheObjectEffects ();
-bLoadTextures = (ogl.m_states.nPreloadTextures > 2);
-for (i = 0; i < gameData.effects.nClips [0]; i++)
-	OglCacheVClipTextures (i, 1);
+// bLoadTextures = (ogl.m_states.nPreloadTextures > 2);
+for (i = 0; i < gameData.effectData.nClips [0]; i++)
+	OglCacheAnimationTextures (i, 1);
 PrintLog (-1);
+
+gameStates.render.DisableCartoonStyle ();
 
 PrintLog (1, "caching cockpit textures\n");
 for (i = 0; i < 2; i++)
 	for (j = 0; j < MAX_GAUGE_BMS; j++)
-		if (gameData.cockpit.gauges [i][j].index != 0xffff)
-			LoadTexture (gameData.cockpit.gauges [i][j].index, 0);
+		if (gameData.cockpitData.gauges [i][j].index != 0xffff)
+			LoadTexture (gameData.cockpitData.gauges [i][j].index, 0, 0);
 PrintLog (-1);
 
 ResetSpecialEffects ();

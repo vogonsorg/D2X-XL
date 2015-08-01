@@ -54,9 +54,11 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "automap.h"
 #include "ogl_shader.h"
 #include "fastrender.h"
+#include "postprocessing.h"
+#include "network_lib.h"
 
-#ifndef Pi
-#	define Pi 3.141592653589793240
+#ifndef PI
+#	define PI 3.141592653589793240
 #endif
 
 //------------------------------------------------------------------------------
@@ -84,8 +86,8 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 // Map movement defines
 #define PITCH_DEFAULT			9000
 #define ZOOM_DEFAULT				I2X (20*10)
-#define ZOOM_MIN_VALUE			I2X (20*5)
-#define ZOOM_MAX_VALUE			I2X (20*100)
+#define ZOOM_MIN_VALUE			I2X (20*1)
+#define ZOOM_MAX_VALUE			I2X (20*200)
 
 #define SLIDE_SPEED 				(350)
 #define ZOOM_SPEED_FACTOR		500	// (1500)
@@ -93,7 +95,7 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 
 #define LEAVE_TIME				0x4000
 
-#define EDGE_IDX(_edgeP)		((int) ((_edgeP) - m_edges.Buffer ()))
+#define EDGE_IDX(_pEdge)		((int32_t) ((_pEdge) - m_edges.Buffer ()))
 
 CAutomap automap;
 
@@ -118,34 +120,17 @@ m_colors.nLgtRed = RGBA_PAL2 (48,0,0);
 
 //------------------------------------------------------------------------------
 
-bool CAutomap::InitBackground (void)
-{
-//m_background.Init ();
-if (m_background.Buffer ())
-	return true;
-
-int nPCXError = PCXReadBitmap (BackgroundName (BG_MAP), &m_background, BM_LINEAR, 0);
-if (nPCXError != PCX_ERROR_NONE) {
-	Error ("File %s - PCX error: %s", BackgroundName (BG_MAP), PcxErrorMsg (nPCXError));
-	return false;
-	}
-m_background.SetPalette (NULL, -1, -1);
-return (m_background.Buffer () != NULL);
-}
-
-//------------------------------------------------------------------------------
-
 void CAutomap::Init (void)
 {
 m_nWidth = 640;
 m_nHeight = 480;
 m_bFull = false;
-m_bDisplay = 0;
+m_bActive = 0;
 m_data.bCheat = 0;
 m_data.bHires = 1;
 m_data.nViewDist = 0;
 m_data.nMaxDist = I2X (2000);
-m_data.nZoom = 0x9000;
+m_data.nZoom = DEFAULT_ZOOM;
 m_data.viewer.vPos.SetZero ();
 m_data.viewTarget.SetZero ();
 m_data.viewer.mOrient = CFixMatrix::IDENTITY;
@@ -165,6 +150,30 @@ InitColors ();
 
 //------------------------------------------------------------------------------
 
+#if DBG
+void CAutomap::SetActive (int32_t bActive) 
+{ 
+if ((m_bActive = bActive))
+	BRP;
+}
+#endif
+
+//------------------------------------------------------------------------------
+
+int32_t CAutomap::Active (void)
+{
+return m_bActive || OBSERVING;
+}
+
+//------------------------------------------------------------------------------
+
+int32_t CAutomap::Texturing (void)
+{
+return OBSERVING ? 1 : gameOpts->render.automap.bTextured;
+}
+	
+//------------------------------------------------------------------------------
+
 void CAutomap::ClearVisited ()
 {
 m_visited.Clear ();
@@ -173,44 +182,45 @@ markerManager.Clear ();
 
 //------------------------------------------------------------------------------
 
-void CAutomap::DrawPlayer (CObject* objP)
+void CAutomap::DrawPlayer (CObject* pObj)
 {
-	CFixVector	vArrowPos, vHeadPos;
-	CRenderPoint		spherePoint, arrowPoint, headPoint;
-	int			size = objP->info.xSize * (m_bRadar ? 2 : 1);
-//	int			bUseTransform = ogl.m_states.bUseTransform;
+	CFixVector		vArrowPos, vHeadPos;
+	CRenderPoint	spherePoint, arrowPoint, headPoint;
+	int32_t			size = pObj->info.xSize * (m_bRadar ? 2 : 1);
+//	int32_t			bUseTransform = ogl.m_states.bUseTransform;
 
 spherePoint.SetIndex (-1);
 // Draw Console CPlayerData -- shaped like a ellipse with an arrow.
 //spherePoint.m_vertex [1].SetZero ();
-spherePoint.TransformAndEncode (objP->info.position.vPos);
-//transformation.Rotate (&spherePoint.m_vertex [1], &objP->info.position.vPos, 0);
-G3DrawSphere (&spherePoint, m_bRadar ? objP->info.xSize * 2 : objP->info.xSize, !m_bRadar);
+spherePoint.TransformAndEncode (pObj->info.position.vPos);
+//transformation.Rotate (&spherePoint.m_vertex [1], &pObj->info.position.vPos, 0);
+G3DrawSphere (&spherePoint, m_bRadar ? pObj->info.xSize * 2 : pObj->info.xSize, !m_bRadar);
 
-if (m_bRadar && (objP->Index () != LOCALPLAYER.nObject))
+if (m_bRadar && (pObj->Index () != LOCALPLAYER.nObject))
 	return;
 if (ogl.SizeVertexBuffer (3)) {
+	ogl.SetBlending (true);
 	headPoint.SetIndex (-1);
 	arrowPoint.SetIndex (-1);
 	ogl.VertexBuffer () [1].Assign (spherePoint.ViewPos ());
 	// Draw CPlayerData's up vector
-	vArrowPos = objP->info.position.vPos + objP->info.position.mOrient.m.dir.u * (size*2);
+	vArrowPos = pObj->info.position.vPos + pObj->info.position.mOrient.m.dir.u * (size*2);
 	arrowPoint.TransformAndEncode (vArrowPos);
 	ogl.VertexBuffer () [0].Assign (arrowPoint.ViewPos ());
 	// Draw shaft of arrow
-	vArrowPos = objP->info.position.vPos + objP->info.position.mOrient.m.dir.f * (size * 3);
+	vArrowPos = pObj->info.position.vPos + pObj->info.position.mOrient.m.dir.f * (size * 3);
 	arrowPoint.TransformAndEncode (vArrowPos);
 	ogl.VertexBuffer () [2].Assign (arrowPoint.ViewPos ());
 	ogl.FlushBuffers (GL_LINE_STRIP, 3);
 	ogl.VertexBuffer () [1].Assign (arrowPoint.ViewPos ());
 	// Draw right head of arrow
-	vHeadPos = objP->info.position.vPos + objP->info.position.mOrient.m.dir.f * (size*2);
-	vHeadPos += objP->info.position.mOrient.m.dir.r * (size*1);
+	vHeadPos = pObj->info.position.vPos + pObj->info.position.mOrient.m.dir.f * (size*2);
+	vHeadPos += pObj->info.position.mOrient.m.dir.r * (size*1);
 	headPoint.TransformAndEncode (vHeadPos);
 	ogl.VertexBuffer () [0].Assign (headPoint.ViewPos ());
 	// Draw left head of arrow
-	vHeadPos = objP->info.position.vPos + objP->info.position.mOrient.m.dir.f * (size*2);
-	vHeadPos += objP->info.position.mOrient.m.dir.r * (size* (-1));
+	vHeadPos = pObj->info.position.vPos + pObj->info.position.mOrient.m.dir.f * (size*2);
+	vHeadPos += pObj->info.position.mOrient.m.dir.r * (size* (-1));
 	headPoint.TransformAndEncode (vHeadPos);
 	ogl.VertexBuffer () [2].Assign (headPoint.ViewPos ());
 	ogl.FlushBuffers (GL_LINE_STRIP, 3);
@@ -221,17 +231,17 @@ if (ogl.SizeVertexBuffer (3)) {
 
 void CAutomap::DrawObjects (void)
 {
-if (!((gameOpts->render.automap.bTextured & 2) || m_bRadar))
+if (!((Texturing () & 2) || m_bRadar))
 	return;
-int color = IsTeamGame ? GetTeam (N_LOCALPLAYER) : N_LOCALPLAYER % MAX_PLAYER_COLORS;	// Note link to above if!
+int32_t color = IsTeamGame ? GetTeam (N_LOCALPLAYER) : N_LOCALPLAYER % MAX_PLAYER_COLORS;	// Note link to above if!
 CCanvas::Current ()->SetColorRGBi (RGBA_PAL2 (playerColors [color].r, playerColors [color].g, playerColors [color].b));
-int bTextured = (gameOpts->render.automap.bTextured & 1) && !m_bRadar;
+int32_t bTextured = (Texturing () & 1) && !m_bRadar;
 ogl.SetFaceCulling (false);
 ogl.SetBlending (true);
 gameStates.render.grAlpha = gameStates.app.bNostalgia ? 1.0f : bTextured ? 0.5f : 0.9f;
 ogl.SetTexturing (false);
-glLineWidth (2 * GLfloat (screen.Width ()) / 640.0f);
-DrawPlayer (OBJECTS + LOCALPLAYER.nObject);
+glLineWidth (2 * GLfloat (gameData.renderData.screen.Width ()) / 640.0f);
+DrawPlayer (OBJECT (LOCALPLAYER.nObject));
 if (!m_bRadar) {
 	markerManager.Render ();
 	if ((markerManager.Highlight () > -1) && (markerManager.Message () [0] != 0)) {
@@ -240,80 +250,79 @@ if (!m_bRadar) {
 					markerManager.Message (N_LOCALPLAYER * 2 + markerManager.Highlight ()));
 		CCanvas::Current ()->SetColorRGB (196, 0, 0, 255);
 		fontManager.SetCurrent (SMALL_FONT);
-		GrString (5, 20, msg, NULL);
+		GrString (5, 20, msg);
 		}
 	}
 // Draw player(s)...
 if (AM_SHOW_PLAYERS) {
-	for (int i = 0; i < gameData.multiplayer.nPlayers; i++) {
+	for (int32_t i = 0; i < N_PLAYERS; i++) {
 		if ((i != N_LOCALPLAYER) && AM_SHOW_PLAYER (i)) {
-			if (OBJECTS [gameData.multiplayer.players [i].nObject].info.nType == OBJ_PLAYER) {
+			if (PLAYEROBJECT (i)->info.nType == OBJ_PLAYER) {
 				color = IsTeamGame ? GetTeam (i) : i;
 				CCanvas::Current ()->SetColorRGBi (RGBA_PAL2 (playerColors [color].r, playerColors [color].g, playerColors [color].b));
 				if (bTextured)
 					ogl.SetBlending (true);
-				DrawPlayer (OBJECTS + gameData.multiplayer.players [i].nObject);
+				DrawPlayer (OBJECT (PLAYER (i).nObject));
 				}
 			}
 		}
 	}
 
-if (bTextured)
-	ogl.SetBlending (true);
+	CObject*			pObj;
+	CRenderPoint	spherePoint;
 
-CObject* objP = OBJECTS.Buffer ();
-CRenderPoint	spherePoint;
-
-FORALL_OBJS (objP, i) {
-	int size = objP->info.xSize;
-	switch (objP->info.nType) {
+FORALL_OBJS (pObj) {
+	int32_t size = pObj->info.xSize;
+	if (bTextured)
+		ogl.SetBlending (true);
+	switch (pObj->info.nType) {
 		case OBJ_HOSTAGE:
 			CCanvas::Current ()->SetColorRGBi (m_colors.nHostage);
-			spherePoint.TransformAndEncode (objP->info.position.vPos);
+			spherePoint.TransformAndEncode (pObj->info.position.vPos);
 			G3DrawSphere (&spherePoint, size, !m_bRadar);
 			break;
 
 		case OBJ_MONSTERBALL:
 			CCanvas::Current ()->SetColorRGBi (m_colors.nMonsterball);
-			spherePoint.TransformAndEncode (objP->info.position.vPos);
+			spherePoint.TransformAndEncode (pObj->info.position.vPos);
 			G3DrawSphere (&spherePoint,size, !m_bRadar);
 			break;
 
 		case OBJ_ROBOT:
-			if (AM_SHOW_ROBOTS && ((gameStates.render.bAllVisited && bTextured) || m_visited [objP->info.nSegment])) {
-				static int t = 0;
-				static int d = 1;
-				int h = SDL_GetTicks ();
+			if (AM_SHOW_ROBOTS && ((gameStates.render.bAllVisited && bTextured) || m_visited [pObj->info.nSegment])) {
+				static int32_t t = 0;
+				static int32_t d = 1;
+				int32_t h = SDL_GetTicks ();
 				if (h - t > 333) {
 					t = h;
 					d = -d;
 					}
 				float fScale = float (h - t) / 333.0f;
-				if (ROBOTINFO (objP->info.nId).companion) {
+				if (pObj->IsGuideBot ()) {
 					if (d < 0)
-						CCanvas::Current ()->SetColorRGB (0, 123 - int ((123 - 78) * fScale + 0.5f), 151 - int ((151 - 112) * fScale + 0.5f), 255);
+						CCanvas::Current ()->SetColorRGB (0, 123 - (int32_t) FRound ((123 - 78) * fScale), 151 - (int32_t) FRound ((151 - 112) * fScale), 255);
 					else
-						CCanvas::Current ()->SetColorRGB (0, 78 + int ((123 - 78) * fScale + 0.5f), 122 + int ((151 - 112) * fScale + 0.5f), 255);
+						CCanvas::Current ()->SetColorRGB (0, 78 + (int32_t) FRound ((123 - 78) * fScale), 122 + (int32_t) FRound ((151 - 112) * fScale), 255);
 					}
 				else {
 					if (d < 0)
-						CCanvas::Current ()->SetColorRGB (123 - int ((123 - 78) * fScale + 0.5f), 0, 135 - int ((135 - 96) * fScale + 0.5f), 255);
+						CCanvas::Current ()->SetColorRGB (123 - (int32_t) FRound ((123 - 78) * fScale), 0, 135 - (int32_t) FRound ((135 - 96) * fScale), 255);
 					else
-						CCanvas::Current ()->SetColorRGB (78 + int ((123 - 78) * fScale + 0.5f), 0, 96 + int ((135 - 96) * fScale + 0.5f), 255);
+						CCanvas::Current ()->SetColorRGB (78 + (int32_t) FRound ((123 - 78) * fScale), 0, 96 + (int32_t) FRound ((135 - 96) * fScale), 255);
 					}
-				spherePoint.TransformAndEncode (objP->info.position.vPos);
-				//transformation.Begin (&objP->info.position.vPos, &objP->info.position.mOrient);
+				spherePoint.TransformAndEncode (pObj->info.position.vPos);
+				//transformation.Begin (&pObj->info.position.vPos, &pObj->info.position.mOrient, __FILE__, __LINE__);
 				G3DrawSphere (&spherePoint, bTextured ? size : (size * 3) / 2, !m_bRadar);
-				//transformation.End ();
+				//transformation.End (__FILE__, __LINE__);
 				}
 			break;
 
 		case OBJ_POWERUP:
 #if DBG
-			if (objP->info.nSegment == nDbgSeg)
-				nDbgSeg = nDbgSeg;
+			if (pObj->info.nSegment == nDbgSeg)
+				BRP;
 #endif
-			switch (objP->info.nId) {
+			switch (pObj->info.nId) {
 				case POW_KEY_RED:
 					CCanvas::Current ()->SetColorRGBi (RGBA_PAL2 (63, 5, 5));
 					size *= 4;
@@ -327,16 +336,16 @@ FORALL_OBJS (objP, i) {
 					size *= 4;
 					break;
 				default:
-					if (!(AM_SHOW_POWERUPS (1) && (gameStates.render.bAllVisited || m_visited [objP->info.nSegment])))
+					if (!(AM_SHOW_POWERUPS (1) && (gameStates.render.bAllVisited || m_visited [pObj->info.nSegment])))
 						continue;
 					CCanvas::Current ()->SetColorRGBi (ORANGE_RGBA); //orange
 					break;
 				}
 #if DBG
-			if (objP->info.nSegment == nDbgSeg)
-				nDbgSeg = nDbgSeg;
+			if (pObj->info.nSegment == nDbgSeg)
+				BRP;
 #endif
-			spherePoint.TransformAndEncode (objP->info.position.vPos);
+			spherePoint.TransformAndEncode (pObj->info.position.vPos);
 			G3DrawSphere (&spherePoint, size, !m_bRadar);
 			break;
 		}
@@ -352,11 +361,13 @@ void CAutomap::DrawLevelId (void)
 {
 if (gameStates.app.bNostalgia)
 	return;
+if (OBSERVING)
+	return;
 if (gameStates.app.bSaveScreenShot && cockpit->Hide ())
 	return;
 
 	CFont*	curFont = CCanvas::Current ()->Font ();
-	int		w, h, aw, offs = m_data.bHires ? 10 : 5;
+	int32_t	w, h, aw, offs = m_data.bHires ? 10 : 5;
 	char		szInfo [3][200];
 
 #if 0
@@ -394,7 +405,7 @@ else {
 	fontManager.SetColorRGBi (GRAY_RGBA, 1, 0, 0);
 	offs /= 2;
 	}
-for (int i = 0; (i < 3) && *szInfo [i]; i++) {
+for (int32_t i = 0; (i < 3) && *szInfo [i]; i++) {
 	fontManager.Current ()->StringSize (szInfo [i], w, h, aw);
 	GrPrintF (NULL, (CCanvas::Current ()->Width () - w) / 2, CCanvas::Current ()->Height () - offs - (i + 1) * h - i * 2, szInfo [i]);
 	}
@@ -406,7 +417,7 @@ if (gameOpts->render.cockpit.bHUD) {
 	fontManager.Current ()->StringSize (m_szLevelName, w, h, aw);
 	GrPrintF (NULL, CCanvas::Current ()->Width () - offs - w, offs, m_szLevelName);
 	fontManager.SetCurrent (curFont);
-	if (gameOpts->render.automap.bTextured & 1)
+	if (Texturing () & 1)
 		cockpit->DrawFrameRate ();
 	}
 }
@@ -417,108 +428,107 @@ void CAutomap::Render (fix xStereoSeparation)
 {
 #if 1
 PROF_START
-	int	bAutomapFrame = !m_bRadar &&
-								 (gameStates.render.cockpit.nType != CM_FULL_SCREEN) &&
-								 (gameStates.render.cockpit.nType != CM_LETTERBOX);
+	int32_t	bAutomapFrame = !m_bRadar &&
+									 (gameStates.render.cockpit.nType != CM_FULL_SCREEN) &&
+									 (gameStates.render.cockpit.nType != CM_LETTERBOX);
 	CFixMatrix	mRadar;
 
 automap.m_bFull = (LOCALPLAYER.flags & (PLAYER_FLAGS_FULLMAP_CHEAT | PLAYER_FLAGS_FULLMAP)) != 0;
-if ((m_bRadar = m_bRadar) == 2) {
-	CFixMatrix& po = gameData.multiplayer.playerInit [N_LOCALPLAYER].position.mOrient;
-#if 1
-	mRadar.m.dir.r = po.m.dir.r;
-	mRadar.m.dir.f = po.m.dir.u;
-	mRadar.m.dir.f.v.coord.y = -mRadar.m.dir.f.v.coord.y;
-	mRadar.m.dir.u = po.m.dir.f;
-#else
-	mRadar.rVec.p.x = po->rVec.p.x;
-	mRadar.rVec.p.y = po->rVec.p.y;
-	mRadar.rVec.p.z = po->rVec.p.z;
-	mRadar.fVec.p.x = po->uVec.p.x;
-	mRadar.fVec.p.y = -po->uVec.p.y;
-	mRadar.fVec.p.z = po->uVec.p.z;
-	mRadar.uVec.p.x = po->fVec.p.x;
-	mRadar.uVec.p.y = po->fVec.p.y;
-	mRadar.uVec.p.z = po->fVec.p.z;
-#endif
+if (!m_bRadar) {
+	ogl.SetStereoSeparation (xStereoSeparation);
+	SetupCanvasses ();
 	}
-if (m_bRadar)
+else {
+	if (m_bRadar == 2) {
+		CFixMatrix& po = gameData.multiplayer.playerInit [N_LOCALPLAYER].position.mOrient;
+		mRadar.m.dir.r = po.m.dir.r;
+		mRadar.m.dir.f = po.m.dir.u;
+		mRadar.m.dir.f.v.coord.y = -mRadar.m.dir.f.v.coord.y;
+		mRadar.m.dir.u = po.m.dir.f;
+		}
 	CCanvas::Current ()->Clear (RGBA_PAL2 (0,0,0));
-#if 0
-if (bAutomapFrame) {
-	if (InitBackground ())
-		m_background.RenderFullScreen ();
-	fontManager.SetCurrent (HUGE_FONT);
-	fontManager.SetColorRGBi (GRAY_RGBA, 1, 0, 0);
-	GrPrintF (NULL, RESCALE_X (80), RESCALE_Y (36), TXT_AUTOMAP, HUGE_FONT);
-	fontManager.SetCurrent (SMALL_FONT);
-	fontManager.SetColorRGBi (GRAY_RGBA, 1, 0, 0);
-	GrPrintF (NULL, RESCALE_X (60), RESCALE_Y (426), TXT_TURN_SHIP);
-	GrPrintF (NULL, RESCALE_X (60), RESCALE_Y (443), TXT_SLIDE_UPDOWN);
-	GrPrintF (NULL, RESCALE_X (60), RESCALE_Y (460), TXT_VIEWING_DISTANCE);
-	//GrUpdate (0);
 	}
-#endif
-if (!gameOpts->render.automap.bTextured || gameStates.app.bNostalgia)
+
+if (!Texturing () || gameStates.app.bNostalgia)
 	gameOpts->render.automap.bTextured = 1;
-G3StartFrame (transformation, m_bRadar /*|| !(gameOpts->render.automap.bTextured & 1)*/, !m_bRadar, xStereoSeparation);
+G3StartFrame (transformation, m_bRadar /*|| !(Texturing () & 1)*/, !m_bRadar, xStereoSeparation);
 ogl.ResetClientStates ();
 shaderManager.Deploy (-1);
 
 if (bAutomapFrame)
-	ogl.Viewport (RESCALE_X (27), RESCALE_Y (80), RESCALE_X (582), RESCALE_Y (334));
+	ogl.SetViewport (RESCALE_X (27), RESCALE_Y (80), RESCALE_X (582), RESCALE_Y (334));
 RenderStartFrame ();
+
+tObjTransformation viewer;
 if (m_bRadar == 2) {
-	m_data.viewer.vPos = m_data.viewTarget + mRadar.m.dir.f * (-m_data.nViewDist);
-	SetupTransformation (transformation, m_data.viewer.vPos, mRadar, m_data.nZoom * 2, 1);
+	viewer = m_data.viewer;
+	viewer.vPos = m_data.viewTarget + mRadar.m.dir.f * -m_data.nViewDist;
+	SetupTransformation (transformation, viewer.vPos, mRadar, m_data.nZoom * 2, 1);
 	}
 else {
-	m_data.viewer.vPos = m_data.viewTarget + m_data.viewer.mOrient.m.dir.f * -m_data.nViewDist;
-	if (!m_bRadar && xStereoSeparation) {
-		//glClear (GL_COLOR_BUFFER_BIT);
-		m_data.viewer.vPos += m_data.viewer.mOrient.m.dir.r * xStereoSeparation;
+	if (OBSERVING) {
+		if (LOCALPLAYER.ObservedPlayer () == -1) 
+			viewer = LOCALOBJECT->info.position;
+		else {
+			FLIGHTPATH.GetViewPoint (&viewer.vPos);
+			viewer.mOrient = FLIGHTPATH.Tail ()->mOrient;
+			}
 		}
-	SetupTransformation (transformation, m_data.viewer.vPos, m_data.viewer.mOrient, m_bRadar ? (m_data.nZoom * 3) / 2 : m_data.nZoom, 1);
+	else { 
+		viewer = m_data.viewer;
+		viewer.vPos = m_data.viewTarget + m_data.viewer.mOrient.m.dir.f * -m_data.nViewDist;
+		}
+	if (!m_bRadar && xStereoSeparation)
+		viewer.vPos += viewer.mOrient.m.dir.r * xStereoSeparation;
+	SetupTransformation (transformation, viewer.vPos, viewer.mOrient, m_bRadar ? (m_data.nZoom * 3) / 2 : m_data.nZoom, 1);
 	}
 UpdateSlidingFaces ();
-if (!m_bRadar && (gameStates.app.bNostalgia < 2) && (gameOpts->render.automap.bTextured & 1)) {
-	gameData.render.mine.viewer = m_data.viewer;
-	RenderMine (gameData.objs.consoleP->info.nSegment, 0, 0);
+if (!m_bRadar && (gameStates.app.bNostalgia < 2) && (Texturing () & 1)) {
+	gameData.renderData.mine.viewer = viewer;
+	RenderMine (gameData.objData.pConsole->info.nSegment, 0, 0);
 	RenderEffects (0);
 	}
-if (m_bRadar || (gameOpts->render.automap.bTextured & 2)) {
+if (m_bRadar || (Texturing () & 2)) {
 	DrawEdges ();
 	DrawObjects ();
 	}
 G3EndFrame (transformation, 0);
+if (!m_bRadar)
+	RenderFog ();
 
 if (m_bRadar) {
-	ogl.m_states.bEnableScissor = 0;
+	//ogl.m_states.bEnableScissor = 0;
 	return;
 	}
-gameData.app.nFrameCount++;
-if (bAutomapFrame) {
-	if (InitBackground ()) {
-		m_background.SetTranspType (2);
-		m_background.AddFlags (BM_FLAG_TRANSPARENT);
-		m_background.RenderFullScreen ();
-		}
-	fontManager.SetCurrent (HUGE_FONT);
-	fontManager.SetColorRGBi (GRAY_RGBA, 1, 0, 0);
-	GrPrintF (NULL, RESCALE_X (80), RESCALE_Y (36), TXT_AUTOMAP, HUGE_FONT);
-	fontManager.SetCurrent (SMALL_FONT);
-	fontManager.SetColorRGBi (GRAY_RGBA, 1, 0, 0);
-	GrPrintF (NULL, RESCALE_X (60), RESCALE_Y (426), TXT_TURN_SHIP);
-	GrPrintF (NULL, RESCALE_X (60), RESCALE_Y (443), TXT_SLIDE_UPDOWN);
-	GrPrintF (NULL, RESCALE_X (60), RESCALE_Y (460), TXT_VIEWING_DISTANCE);
-	//GrUpdate (0);
-	}
-DrawLevelId ();
+gameData.appData.nFrameCount++;
 PROF_END(ptRenderFrame)
 #endif
 FlushFrame (xStereoSeparation);
 if (gameStates.app.bSaveScreenShot)
 	SaveScreenShot (NULL, 1);
+}
+
+//------------------------------------------------------------------------------
+
+void CAutomap::RenderInfo (void)
+{
+PROF_START
+	int32_t bAutomapFrame = !m_bRadar && !OBSERVING &&
+									(gameStates.render.cockpit.nType != CM_FULL_SCREEN) &&
+									(gameStates.render.cockpit.nType != CM_LETTERBOX);
+if (bAutomapFrame) {
+	backgroundManager.Draw (BG_MAP);
+	fontManager.SetCurrent (HUGE_FONT);
+	fontManager.SetColorRGBi (GRAY_RGBA, 1, 0, 0);
+	GrPrintF (NULL, RESCALE_X (80), RESCALE_Y (36), TXT_AUTOMAP, HUGE_FONT);
+	fontManager.SetCurrent (SMALL_FONT);
+	fontManager.SetColorRGBi (GRAY_RGBA, 1, 0, 0);
+	GrPrintF (NULL, RESCALE_X (60), RESCALE_Y (426), TXT_TURN_SHIP);
+	GrPrintF (NULL, RESCALE_X (60), RESCALE_Y (443), TXT_SLIDE_UPDOWN);
+	GrPrintF (NULL, RESCALE_X (60), RESCALE_Y (460), TXT_VIEWING_DISTANCE);
+	//ogl.Update (0);
+	}
+DrawLevelId ();
 }
 
 //------------------------------------------------------------------------------
@@ -534,7 +544,7 @@ const char *pszSystemNames [] = {
 void CAutomap::CreateNameCanvas (void)
 {
 	char	szExplored [100];
-	int	h, i;
+	int32_t	h, i;
 
 if (missionManager.nCurrentLevel > 0)
 	sprintf (m_szLevelNum, "%s %i",TXT_LEVEL, missionManager.nCurrentLevel);
@@ -547,36 +557,36 @@ if ((missionManager.nCurrentMission == missionManager.nBuiltInMission [0]) && (m
 else
 	strcpy (m_szLevelName, " ");
 strcat (m_szLevelName, missionManager.szCurrentLevel);
-for (h = i = 0; i < gameData.segs.nSegments; i++)
+for (h = i = 0; i < gameData.segData.nSegments; i++)
 	if (m_visited [i])
 		h++;
-sprintf (szExplored, " (%1.1f %s)", (float) (h * 100) / (float) gameData.segs.nSegments, TXT_PERCENT_EXPLORED);
+sprintf (szExplored, " (%1.1f %s)", (float) (h * 100) / (float) gameData.segData.nSegments, TXT_PERCENT_EXPLORED);
 strcat (m_szLevelName, szExplored);
 }
 
 //	-----------------------------------------------------------------------------
 //	Set the segment depth of all segments from nStartSeg in *segbuf.
 //	Returns maximum nDepth value.
-int CAutomap::SetSegmentDepths (int nStartSeg, ushort *depthBufP)
+int32_t CAutomap::SetSegmentDepths (int32_t nStartSeg, uint16_t *depthBufP)
 {
-	ubyte		bVisited [MAX_SEGMENTS_D2X];
-	short		queue [MAX_SEGMENTS_D2X];
-	int		head = 0;
-	int		tail = 0;
-	int		nDepth = 1;
-	int		nSegment, nSide, nChild;
-	ushort	nParentDepth = 0;
-	short*	childP;
+	uint8_t	bVisited [MAX_SEGMENTS_D2X];
+	int16_t	queue [MAX_SEGMENTS_D2X];
+	int32_t	head = 0;
+	int32_t	tail = 0;
+	int32_t	nDepth = 1;
+	int32_t	nSegment, nSide, nChild;
+	uint16_t	nParentDepth = 0;
+	int16_t*	pChild;
 
 	head = 0;
 	tail = 0;
 
-if ((nStartSeg < 0) || (nStartSeg >= gameData.segs.nSegments))
+if ((nStartSeg < 0) || (nStartSeg >= gameData.segData.nSegments))
 	return 1;
 if (depthBufP [nStartSeg] == 0)
 	return 1;
 queue [tail++] = nStartSeg;
-memset (bVisited, 0, sizeof (*bVisited) * gameData.segs.nSegments);
+memset (bVisited, 0, sizeof (*bVisited) * gameData.segData.nSegments);
 bVisited [nStartSeg] = 1;
 depthBufP [nStartSeg] = nDepth++;
 if (nDepth == 0)
@@ -585,15 +595,15 @@ while (head < tail) {
 	nSegment = queue [head++];
 #if DBG
 	if (nSegment == nDbgSeg)
-		nDbgSeg = nDbgSeg;
+		BRP;
 #endif
 	nParentDepth = depthBufP [nSegment];
-	childP = SEGMENTS [nSegment].m_children;
-	for (nSide = SEGMENT_SIDE_COUNT; nSide; nSide--, childP++) {
-		if (0 > (nChild = *childP))
+	pChild = SEGMENT (nSegment)->m_children;
+	for (nSide = SEGMENT_SIDE_COUNT; nSide; nSide--, pChild++) {
+		if (0 > (nChild = *pChild))
 			continue;
 #if DBG
-		if (nChild >= gameData.segs.nSegments) {
+		if (nChild >= gameData.segData.nSegments) {
 			Error ("Invalid segment in SetSegmentDepths()\nsegment=%d, side=%d, child=%d",
 					 nSegment, nSide, nChild);
 			return 1;
@@ -601,7 +611,7 @@ while (head < tail) {
 #endif
 #if DBG
 		if (nChild == nDbgSeg)
-			nDbgSeg = nDbgSeg;
+			BRP;
 #endif
 		if (!depthBufP [nChild])
 			continue;
@@ -617,13 +627,23 @@ return (nParentDepth + 1) * gameStates.render.bViewDist;
 
 //------------------------------------------------------------------------------
 
-int CAutomap::Setup (int bPauseGame, fix& xEntryTime)
+void CAutomap::InitView (void)
 {
-	int		i;
-	CObject	*playerP;
+m_vTAngles.Set (PITCH_DEFAULT, 0, 0);
+CObject*	pPlayer = OBJECT (LOCALPLAYER.nObject);
+if (OBSERVING)
+	m_data.viewer.mOrient = pPlayer->info.position.mOrient;
+m_data.nViewDist = ZOOM_DEFAULT;
+m_data.viewer = pPlayer->info.position;
+m_data.viewTarget = pPlayer->info.position.vPos;
+}
 
-if (m_bDisplay < 0) {
-	m_bDisplay = 0;
+//------------------------------------------------------------------------------
+
+int32_t CAutomap::Setup (int32_t bPauseGame, fix& xEntryTime)
+{
+if (m_bActive < 0) {
+	m_bActive = 0;
 	if ((m_bChaseCam = gameStates.render.bChaseCam))
 		SetChaseCam (0);
 	if ((m_bFreeCam = (gameStates.render.bFreeCam > 0)))
@@ -631,12 +651,11 @@ if (m_bDisplay < 0) {
 
 	ogl.m_states.nContrast = 8;
 	InitColors ();
-	if (!m_bRadar)
+	if (!m_bRadar) {
 		SlowMotionOff ();
-	if (m_bRadar ||
-		 (IsMultiGame &&
-		  (gameStates.app.nFunctionMode == FMODE_GAME) &&
-		  (!gameStates.app.bEndLevelSequence)))
+		StopPlayerMovement ();
+		}
+	if (m_bRadar || (IsMultiGame && (gameStates.app.nFunctionMode == FMODE_GAME) && !gameStates.app.bEndLevelSequence))
 		bPauseGame = 0;
 	if (bPauseGame)
 		PauseGame ();
@@ -647,8 +666,8 @@ if (m_bDisplay < 0) {
 			m_nHeight = CCanvas::Current ()->Height ();
 			}
 		else {
-			m_nWidth = screen.Canvas ()->Width ();
-			m_nHeight = screen.Canvas ()->Height ();
+			m_nWidth = gameData.renderData.screen.Width ();
+			m_nHeight = gameData.renderData.screen.Height ();
 			}
 		m_data.bHires = 1;
 		 }
@@ -665,86 +684,103 @@ if (m_bDisplay < 0) {
 		m_data.nViewDist = ZOOM_DEFAULT;
 	else if (!m_data.nViewDist)
 		m_data.nViewDist = ZOOM_DEFAULT;
-	playerP = OBJECTS + LOCALPLAYER.nObject;
-	m_data.viewer.mOrient = playerP->info.position.mOrient;
-
-	m_vTAngles.v.coord.p = PITCH_DEFAULT;
-	m_vTAngles.v.coord.h = 0;
-	m_vTAngles.v.coord.b = 0;
-
-	m_data.viewTarget = playerP->info.position.vPos;
+	InitView ();
 	xEntryTime = TimerGetFixedSeconds ();
 	}
 BuildEdgeList ();
 
+int32_t	i;
+
 if (m_bRadar) {
-	for (i = 0; i < gameData.segs.nSegments; i++)
+	for (i = 0; i < gameData.segData.nSegments; i++)
 		m_visible [i] = 1;
 	}
 else if (m_bFull) {
-	for (i = 0; i < gameData.segs.nSegments; i++)
+	for (i = 0; i < gameData.segData.nSegments; i++)
 		m_visible [i] = 1;
 	}
 else
 	memcpy (m_visible.Buffer (), m_visited.Buffer (), m_visited.Size ());
-//m_visited [OBJECTS [LOCALPLAYER.nObject].nSegment] = 1;
+
+if (OBSERVING) {
+	gameOpts->render.automap.bBright = 0;
+	gameOpts->render.automap.bGrayOut = 0;
+	extraGameInfo [IsMultiGame].bPowerupsOnRadar = 1;
+	extraGameInfo [IsMultiGame].bRobotsOnRadar = 1;
+	gameOpts->render.automap.bCoronas = 
+	gameOpts->render.automap.bLightning = 
+	gameOpts->render.automap.bParticles = !COMPETITION;
+	gameOpts->render.automap.bSparks = !COMPETITION && (gameOptions [0].render.nQuality > 0);
+	}
+
+//m_visited [LOCALOBJECT->nSegment] = 1;
 m_nSegmentLimit =
-m_nMaxSegsAway = SetSegmentDepths (OBJECTS [LOCALPLAYER.nObject].info.nSegment, m_visible.Buffer ());
+m_nMaxSegsAway = SetSegmentDepths (LOCALOBJECT->info.nSegment, m_visible.Buffer ());
 AdjustSegmentLimit ();
-m_bDisplay++;
-return gameData.app.bGamePaused;
+m_bActive++;
+return gameData.appData.bGamePaused;
 }
 
 //------------------------------------------------------------------------------
 
-int CAutomap::Update (void)
+int32_t CAutomap::Update (void)
 {
-	CObject*		playerP = OBJECTS + LOCALPLAYER.nObject;
-	CFixMatrix	m;
+		CObject* pPlayer = OBJECT (LOCALPLAYER.nObject);
 
-if (controls [0].firePrimaryDownCount) {
-	// Reset orientation
-	m_data.nViewDist = ZOOM_DEFAULT;
-	m_vTAngles.v.coord.p = PITCH_DEFAULT;
-	m_vTAngles.v.coord.h = 0;
-	m_vTAngles.v.coord.b = 0;
-	m_data.viewTarget = playerP->info.position.vPos;
+if (OBSERVING && (LOCALPLAYER.ObservedPlayer () < 0)) {
+	pPlayer->Update ();
+	if (controls [0].firePrimaryDownCount) {
+		pPlayer->info.position = m_data.viewer;
+		InitView ();
+		}
 	}
-if (controls [0].forwardThrustTime)
-	m_data.viewTarget += m_data.viewer.mOrient.m.dir.f * (controls [0].forwardThrustTime * ZOOM_SPEED_FACTOR);
-m_vTAngles.v.coord.p += (fixang) FixDiv (controls [0].pitchTime, ROT_SPEED_DIVISOR);
-m_vTAngles.v.coord.h += (fixang) FixDiv (controls [0].headingTime, ROT_SPEED_DIVISOR);
-m_vTAngles.v.coord.b += (fixang) FixDiv (controls [0].bankTime, ROT_SPEED_DIVISOR*2);
+else {
+		CFixMatrix	m;
 
-m = CFixMatrix::Create (m_vTAngles);
-if (controls [0].verticalThrustTime || controls [0].sidewaysThrustTime) {
-	m_data.viewer.mOrient = playerP->info.position.mOrient * m;
-	m_data.viewTarget += m_data.viewer.mOrient.m.dir.u * (controls [0].verticalThrustTime * SLIDE_SPEED);
-	m_data.viewTarget += m_data.viewer.mOrient.m.dir.r * (controls [0].sidewaysThrustTime * SLIDE_SPEED);
+	if (controls [0].firePrimaryDownCount)
+		InitView ();
+	float fZoomScale = X2F (m_data.nViewDist) / X2F (ZOOM_DEFAULT);
+	if (controls [0].forwardThrustTime)
+#if 1
+		m_data.viewTarget += m_data.viewer.mOrient.m.dir.f * fix (float (controls [0].forwardThrustTime) * float (ZOOM_SPEED_FACTOR));
+#else
+		m_data.nViewDist = Clamp (m_data.nViewDist - fix (float (controls [0].forwardThrustTime) * float (ZOOM_SPEED_FACTOR) * fZoomScale), ZOOM_MIN_VALUE, ZOOM_MAX_VALUE);
+#endif
+	//fZoomScale = pow (fZoomScale, 2.0f / 3.0f);
+	m = CFixMatrix::Create (m_vTAngles);
+	if (controls [0].verticalThrustTime || controls [0].sidewaysThrustTime) {
+		m_data.viewer.mOrient = pPlayer->info.position.mOrient * m;
+		m_data.viewTarget += m_data.viewer.mOrient.m.dir.u * fix (controls [0].verticalThrustTime * SLIDE_SPEED * fZoomScale);
+		m_data.viewTarget += m_data.viewer.mOrient.m.dir.r * fix (controls [0].sidewaysThrustTime * SLIDE_SPEED * fZoomScale);
+		}
+	m_data.viewer.mOrient = pPlayer->info.position.mOrient * m;
+
+	//fZoomScale = 1.0f + sqrt (X2F (m_data.nViewDist) / X2F (ZOOM_MAX_VALUE));
+	m_vTAngles.v.coord.p += (fixang) (float (controls [0].pitchTime) / X2F (ROT_SPEED_DIVISOR) * fZoomScale);
+	m_vTAngles.v.coord.h += (fixang) (float (controls [0].headingTime) / X2F (ROT_SPEED_DIVISOR) * fZoomScale);
+	m_vTAngles.v.coord.b += (fixang) (float (controls [0].bankTime) / X2F (ROT_SPEED_DIVISOR * 2) * fZoomScale);
+
 	}
-m_data.viewer.mOrient = playerP->info.position.mOrient * m;
-if (m_data.nViewDist < ZOOM_MIN_VALUE)
-	m_data.nViewDist = ZOOM_MIN_VALUE;
-if (m_data.nViewDist > ZOOM_MAX_VALUE)
-	m_data.nViewDist = ZOOM_MAX_VALUE;
 return 1;
 }
 
 //------------------------------------------------------------------------------
 
-static inline int ViewDistStep (void)
+static inline int32_t ViewDistStep (void)
 {
-	int h = (automap.SegmentLimit () + 5) / 10;
+	int32_t h = (automap.SegmentLimit () + 5) / 10;
 
 return h ? h : 1;
 }
 
 //------------------------------------------------------------------------------
 
-int CAutomap::ReadControls (int nLeaveMode, int bDone, int& bPauseGame)
+int32_t CAutomap::ReadControls (int32_t nLeaveMode, int32_t bDone, int32_t& bPauseGame)
 {
-	int	c, nMarker, nMaxDrop, nColor = gameOpts->render.automap.bBright | (gameOpts->render.automap.bGrayOut << 1);
+	int32_t	c, nMarker, nMaxDrop, nColor = gameOpts->render.automap.bBright | (gameOpts->render.automap.bGrayOut << 1);
 
+if (OBSERVING)
+	SetChaseCam (0);
 controls.Read ();
 if (controls [0].automapDownCount && !nLeaveMode)
 	return 1;
@@ -758,34 +794,46 @@ while ((c = KeyInKey ())) {
 #endif
 		case KEY_PAUSE:
 			if (gameOpts->menus.nStyle && !IsMultiGame) {
-				if (gameData.app.bGamePaused)
+				if (gameData.appData.bGamePaused)
 					ResumeGame ();
 				else
 					PauseGame ();
 				}
-			bPauseGame = gameData.app.bGamePaused;
+			bPauseGame = gameData.appData.bGamePaused;
 			break;
 
 		case KEY_PRINT_SCREEN: {
-			if (m_data.bHires)
-				CCanvas::SetCurrent (NULL);
 			gameStates.app.bSaveScreenShot = 1;
 			break;
 			}
 
+		case KEY_SPACEBAR: {
+			int8_t nPlayer = LOCALPLAYER.ObservedPlayer ();
+			SwitchObservedPlayer ();
+			if ((nPlayer != LOCALPLAYER.ObservedPlayer ()) && (LOCALPLAYER.ObservedPlayer () == -1)) {
+				LOCALOBJECT->info.position = m_data.viewer;
+				InitView ();
+				}
+			}
+			break;
+			// else fall through
+
 		case KEY_ESC:
-			if (!nLeaveMode)
+			if (!nLeaveMode) {
 				bDone = 1;
+				LOCALPLAYER.SetObservedPlayer (N_LOCALPLAYER);
+				SetChaseCam (0);
+				}
 			break;
 
 #if DBG
 		case KEYDBGGED+KEY_F: {
-			int i;
-			for (i = 0; i <= gameData.segs.nLastSegment; i++)
+			int32_t i;
+			for (i = 0; i <= gameData.segData.nLastSegment; i++)
 				automap.m_visible [i] = 1;
 			BuildEdgeList ();
 			m_nSegmentLimit =
-			m_nMaxSegsAway = SetSegmentDepths (OBJECTS [LOCALPLAYER.nObject].info.nSegment, automap.m_visible.Buffer ());
+			m_nMaxSegsAway = SetSegmentDepths (LOCALOBJECT->info.nSegment, automap.m_visible.Buffer ());
 			AdjustSegmentLimit ();
 			}
 			break;
@@ -839,10 +887,10 @@ while ((c = KeyInKey ())) {
 			break;
 
 		case KEY_F1:
-			if (!gameStates.app.bNostalgia) {
-				if (gameOpts->render.automap.bTextured == 1)
+			if (!gameStates.app.bNostalgia && !OBSERVING) {
+				if (Texturing () == 1)
 					gameOpts->render.automap.bTextured = 3;
-				else if (gameOpts->render.automap.bTextured == 3)
+				else if (Texturing () == 3)
 					gameOpts->render.automap.bTextured = 2;
 				else
 					gameOpts->render.automap.bTextured = 1;
@@ -850,8 +898,8 @@ while ((c = KeyInKey ())) {
 			break;
 
 		case KEY_F2:
-			if (!gameStates.app.bNostalgia) {
-				if (gameOpts->render.automap.bTextured & 1) {
+			if (!gameStates.app.bNostalgia && !OBSERVING) {
+				if (Texturing () & 1) {
 					nColor = (nColor + 1) % 3;
 					gameOpts->render.automap.bBright = (nColor & 1) != 0;
 					gameOpts->render.automap.bGrayOut = (nColor & 2) != 0;
@@ -904,7 +952,7 @@ while ((c = KeyInKey ())) {
 			break;
 
 		case KEY_ALTED + KEY_B:
-			if (gameOpts->render.automap.bTextured & 1)
+			if (Texturing () & 1)
 				gameOpts->render.automap.bBright = !gameOpts->render.automap.bBright;
 			break;
 
@@ -944,20 +992,20 @@ return bDone;
 
 //------------------------------------------------------------------------------
 
-int CAutomap::GameFrame (int bPauseGame, int bDone)
+int32_t CAutomap::GameFrame (int32_t bPauseGame, int32_t bDone)
 {
 	tControlInfo controlInfoSave;
 
 if (!bPauseGame) {
-	ushort bWiggleSave;
+	uint16_t bWiggleSave;
 	controlInfoSave = controls [0];				// Save controls so we can zero them
 	controls.Reset ();
-	bWiggleSave = gameData.objs.consoleP->mType.physInfo.flags & PF_WIGGLE;	// Save old wiggle
-	gameData.objs.consoleP->mType.physInfo.flags &= ~PF_WIGGLE;		// Turn off wiggle
+	bWiggleSave = gameData.objData.pConsole->mType.physInfo.flags & PF_WIGGLE;	// Save old wiggle
+	gameData.objData.pConsole->mType.physInfo.flags &= ~PF_WIGGLE;		// Turn off wiggle
 	if (MultiMenuPoll ())
 		bDone = 1;
-	::GameFrame (0, -1);		// Do game loop with no rendering and no reading controls.
-	gameData.objs.consoleP->mType.physInfo.flags |= bWiggleSave;	// Restore wiggle
+	::GameFrame (0, 0);		// Do game loop with no rendering and no reading controls.
+	gameData.objData.pConsole->mType.physInfo.flags |= bWiggleSave;	// Restore wiggle
 	controls [0] = controlInfoSave;
 	}
 return bDone;
@@ -965,30 +1013,30 @@ return bDone;
 
 //------------------------------------------------------------------------------
 
-void CAutomap::DoFrame (int nKeyCode, int bRadar)
+void CAutomap::DoFrame (int32_t nKeyCode, int32_t bRadar)
 {
-	int				bDone = 0;
-	int				nLeaveMode = 0;
-	int				bFirstTime = 1;
+	int32_t			bDone = 0;
+	int32_t			nLeaveMode = 0;
+	int32_t			bFirstTime = 1;
 	fix				xEntryTime;
-	int				bPauseGame = (gameOpts->menus.nStyle == 0);		// Set to 1 if everything is paused during automap...No pause during net.
+	int32_t			bPauseGame = (gameOpts->menus.nStyle == 0);		// Set to 1 if everything is paused during automap...No pause during net.
 	fix				t1 = 0, t2 = 0;
-	int				nContrast = ogl.m_states.nContrast;
+	int32_t			nContrast = ogl.m_states.nContrast;
 
-	//static ubyte	automapPal [256*3];
+	//static uint8_t	automapPal [256*3];
 
 m_nMaxSegsAway = 0;
 m_nSegmentLimit = 1;
 m_bRadar = bRadar;
 bPauseGame = Setup (bPauseGame, xEntryTime);
 if (bRadar) {
-	int bRenderToTexture = ogl.m_features.bRenderToTexture.Apply ();
-	ogl.m_features.bRenderToTexture = 0;
+	//int32_t bRenderToTexture = ogl.m_features.bRenderToTexture.Apply ();
+	//ogl.m_features.bRenderToTexture = 0;
 	Render ();
-	ogl.m_features.bRenderToTexture = bRenderToTexture;
+	//ogl.m_features.bRenderToTexture = bRenderToTexture;
 
 	ogl.m_states.nContrast = nContrast;
-	if (!--m_bDisplay) {
+	if (!--m_bActive) {
 		if (m_bChaseCam)
 			SetChaseCam (1);
 		else if (m_bFreeCam)
@@ -1008,11 +1056,11 @@ do {
 	redbook.CheckRepeat ();
 	bDone = gameStates.menus.nInMenu || ReadControls (nLeaveMode, bDone, bPauseGame);
 	Update ();
-	if (!gameOpts->render.stereo.nGlasses)
+	if (!ogl.StereoDevice ())
 		Render ();
 	else {
-		Render (-gameOpts->render.stereo.xSeparation);
-		Render (gameOpts->render.stereo.xSeparation);
+		Render (-gameOpts->render.stereo.xSeparation [ogl.IsOculusRift ()]);
+		Render (gameOpts->render.stereo.xSeparation [ogl.IsOculusRift ()]);
 		}
 	if (bFirstTime) {
 		bFirstTime = 0;
@@ -1020,7 +1068,7 @@ do {
 		}
 	t2 = TimerGetFixedSeconds ();
 	if (bPauseGame)
-		gameData.time.SetTime (t2 - t1);
+		gameData.timeData.SetTime (t2 - t1);
 	t1 = t2;
 	PROF_END(ptFrame)
 	} while (!bDone);
@@ -1030,13 +1078,14 @@ levelNumCanv = NULL;
 GrFreeCanvas (levelNameCanv);
 levelNameCanv = NULL;
 #endif
+
 if (!gameStates.menus.nInMenu) {
 	GameFlushInputs ();
-	if (gameData.app.bGamePaused)
+	if (gameData.appData.bGamePaused)
 		ResumeGame ();
 	ogl.m_states.nContrast = nContrast;
 	}
-if (!--m_bDisplay) {
+if (!--m_bActive) {
 	if (m_bChaseCam)
 		SetChaseCam (1);
 	else if (m_bFreeCam)
@@ -1048,7 +1097,7 @@ if (!--m_bDisplay) {
 
 void CAutomap::AdjustSegmentLimit (void)
 {
-	int i,e1;
+	int32_t i,e1;
 	tEdgeInfo * e;
 
 for (i = 0; i <= m_nLastEdge; i++) {
@@ -1065,7 +1114,7 @@ for (i = 0; i <= m_nLastEdge; i++) {
 
 //------------------------------------------------------------------------------
 
-void CAutomap::SetEdgeColor (int nColor, int bFade, float fScale)
+void CAutomap::SetEdgeColor (int32_t nColor, int32_t bFade, float fScale)
 {
 if ((bFade != m_bFade) || (nColor != m_nColor) || (fScale != m_fScale)) {
 	m_bFade = bFade;
@@ -1085,7 +1134,7 @@ if ((bFade != m_bFade) || (nColor != m_nColor) || (fScale != m_fScale)) {
 
 //------------------------------------------------------------------------------
 
-void CAutomap::DrawLine (short v0, short v1)
+void CAutomap::DrawLine (int16_t v0, int16_t v1)
 {
 if ((v0 < 0) || (v1 < 0))
 	return;
@@ -1110,18 +1159,18 @@ else {
 void CAutomap::DrawEdges (void)
 {
 	tRenderCodes	cc;
-	int				i, j, nbright = 0;
-	ubyte				nfacing, nnfacing;
-	tEdgeInfo*		edgeP;
+	int32_t			i, j, nbright = 0;
+	uint8_t			nfacing, nnfacing;
+	tEdgeInfo*		pEdge;
 	CFixVector		*tv1;
 	fix				distance;
 	fix				minDistance = 0x7fffffff;
 	CRenderPoint	*p1;
-	int				bUseTransform = ogl.UseTransform ();
+	int32_t			bUseTransform = ogl.UseTransform ();
 	
 m_bDrawBuffers = ogl.SizeBuffers (1000);
 ogl.SetTransform (1);
-glLineWidth (GLfloat (screen.Width ()) / 640.0f);
+glLineWidth (GLfloat (gameData.renderData.screen.Width ()) / 640.0f);
 ogl.SetDepthTest (false);
 ogl.SetDepthWrite (false);
 ogl.SetTexturing (false);
@@ -1131,27 +1180,27 @@ m_fScale = 1e10f;
 m_nVerts = 0;
 
 for (i = 0; i <= m_nLastEdge; i++) {
-	//edgeP = &m_edges [Edge_used_list [i]];
-	edgeP = m_edges + i;
-	if (!(edgeP->flags & EF_USED))
+	//pEdge = &m_edges [Edge_used_list [i]];
+	pEdge = m_edges + i;
+	if (!(pEdge->flags & EF_USED))
 		continue;
-	if (edgeP->flags & EF_TOO_FAR)
+	if (pEdge->flags & EF_TOO_FAR)
 		continue;
-	if (edgeP->flags & EF_FRONTIER) {		// A line that is between what we have seen and what we haven't
-		if ((!(edgeP->flags & EF_SECRET)) && (edgeP->color == m_colors.walls.nNormal))
+	if (pEdge->flags & EF_FRONTIER) {		// A line that is between what we have seen and what we haven't
+		if ((!(pEdge->flags & EF_SECRET)) && (pEdge->color == m_colors.walls.nNormal))
 			continue;		// If a line isn't secret and is Normal color, then don't draw it
 		}
 
-	cc = TransformVertexList (2, edgeP->verts);
-	distance = RENDERPOINTS [edgeP->verts [1]].ViewPos ().v.coord.z;
+	cc = TransformVertexList (2, pEdge->verts);
+	distance = RENDERPOINTS [pEdge->verts [1]].ViewPos ().v.coord.z;
 	if (minDistance > distance)
 		minDistance = distance;
 	if (!cc.ccAnd)  {	//all off screen?
 		nfacing = nnfacing = 0;
-		tv1 = gameData.segs.vertices + edgeP->verts [0];
+		tv1 = gameData.segData.vertices + pEdge->verts [0];
 		j = 0;
-		while ((j < edgeP->nFaces) && !(nfacing && nnfacing)) {
-			if (!G3CheckNormalFacing (*tv1, SEGMENTS [edgeP->nSegment [j]].m_sides [edgeP->sides [j]].m_normals [0]))
+		while ((j < pEdge->nFaces) && !(nfacing && nnfacing)) {
+			if (!G3CheckNormalFacing (*tv1, SEGMENT (pEdge->nSegment [j])->m_sides [pEdge->sides [j]].m_normals [0]))
 				nfacing++;
 			else
 				nnfacing++;
@@ -1160,14 +1209,14 @@ for (i = 0; i <= m_nLastEdge; i++) {
 
 		if (nfacing && nnfacing) {
 			// a corners line
-			m_brightEdges [nbright++] = edgeP;
+			m_brightEdges [nbright++] = pEdge;
 			}
-		else if (edgeP->flags & (EF_DEFINING|EF_GRATE)) {
+		else if (pEdge->flags & (EF_DEFINING|EF_GRATE)) {
 			if (nfacing) 
-				m_brightEdges [nbright++] = edgeP;
+				m_brightEdges [nbright++] = pEdge;
 			else {
-				SetEdgeColor (int (edgeP->color), (edgeP->flags & EF_NO_FADE) != 0, 8.0f);
-				DrawLine (edgeP->verts [0], edgeP->verts [1]);
+				SetEdgeColor (int32_t (pEdge->color), (pEdge->flags & EF_NO_FADE) != 0, 8.0f);
+				DrawLine (pEdge->verts [0], pEdge->verts [1]);
 				}
 			}
 		}
@@ -1184,7 +1233,7 @@ m_bFade = m_nColor = -1;
 m_fScale = 1e10f;
 // Sort the bright ones using a shell sort
 {
-	int i, j, incr, v1, v2;
+	int32_t i, j, incr, v1, v2;
 
 incr = nbright / 2;
 while (incr > 0) {
@@ -1210,16 +1259,16 @@ while (incr > 0) {
 
 // Draw the bright ones
 for (i = 0; i < nbright; i++) {
-	edgeP = m_brightEdges [i];
-	p1 = RENDERPOINTS + edgeP->verts [0];
+	pEdge = m_brightEdges [i];
+	p1 = RENDERPOINTS + pEdge->verts [0];
 	fix xDist = p1->ViewPos ().v.coord.z - minDistance;
 	// Make distance be 1.0 to 0.0, where 0.0 is 10 segments away;
 	if (xDist < 0)
 		xDist = 0;
 	else if (xDist >= m_data.nMaxDist)
 		continue;
-	SetEdgeColor (int (edgeP->color), (edgeP->flags & EF_NO_FADE) != 0, X2F (I2X (1) - FixDiv (xDist, m_data.nMaxDist)) * 31);
-	DrawLine (edgeP->verts [0], edgeP->verts [1]);
+	SetEdgeColor (int32_t (pEdge->color), (pEdge->flags & EF_NO_FADE) != 0, X2F (I2X (1) - FixDiv (xDist, m_data.nMaxDist)) * 31);
+	DrawLine (pEdge->verts [0], pEdge->verts [1]);
 	}
 if (m_bDrawBuffers && m_nVerts) {
 	ogl.FlushBuffers (GL_LINES, m_nVerts, 3, 0, 1);
@@ -1241,18 +1290,18 @@ ogl.SetTransform (bUseTransform);
 
 
 //finds edge, filling in edge_ptr. if found old edge, returns index, else return -1
-int CAutomap::FindEdge (int v0, int v1, tEdgeInfo*& edgeP)
+int32_t CAutomap::FindEdge (int32_t v0, int32_t v1, tEdgeInfo*& pEdge)
 {
-	int vv, evv;
-	int hash,oldhash;
-	int ret, ev0, ev1;
+	int32_t vv, evv;
+	int32_t hash,oldhash;
+	int32_t ret, ev0, ev1;
 
 vv = (v1<<16) + v0;
 oldhash = hash = ((v0*5+v1) % MAX_EDGES);
 ret = -1;
 while (ret == -1) {
-	ev0 = (int) (m_edges [hash].verts [0]);
-	ev1 = (int) (m_edges [hash].verts [1]);
+	ev0 = (int32_t) (m_edges [hash].verts [0]);
+	ev1 = (int32_t) (m_edges [hash].verts [1]);
 	evv = (ev1 << 16) + ev0;
 	if (m_edges [hash].nFaces == 0) 
 		ret = 0;
@@ -1265,13 +1314,13 @@ while (ret == -1) {
 			Error ("Edge list full!");
 		}
 	}
-edgeP = &m_edges [hash];
+pEdge = &m_edges [hash];
 return ret ? hash : -1;
 }
 
 //------------------------------------------------------------------------------
 
-void CAutomap::AddEdge (int va, int vb, uint color, ubyte nSide, short nSegment, int bHidden, int bGrate, int bNoFade)
+void CAutomap::AddEdge (int32_t va, int32_t vb, uint32_t color, uint8_t nSide, int16_t nSegment, int32_t bHidden, int32_t bGrate, int32_t bNoFade)
 {
 if (va == vb)
 	return;
@@ -1280,8 +1329,8 @@ if ((va < 0) || (vb < 0))
 if ((va == 0xFFFF) || (vb == 0xFFFF))
 	return;
 
-	int			found;
-	tEdgeInfo*	edgeP;
+	int32_t			found;
+	tEdgeInfo*	pEdge;
 
 	if (m_nEdges >= MAX_EDGES) {
 		// GET JOHN!(And tell him that his
@@ -1299,80 +1348,80 @@ if (va > vb)
 
 #if DBG
 if ((va == 1) && (vb == 3))
-	va = va;
+	BRP;
 #endif
 
-found = FindEdge (va, vb, edgeP);
+found = FindEdge (va, vb, pEdge);
 
 if (found == -1) {
-	edgeP->verts [0] = va;
-	edgeP->verts [1] = vb;
-	edgeP->color = color;
-	edgeP->nFaces = 1;
-	edgeP->flags = EF_USED | EF_DEFINING;			// Assume a Normal line
-	edgeP->sides [0] = nSide;
-	edgeP->nSegment [0] = nSegment;
-	//Edge_used_list [m_nEdges] = EDGE_IDX (edgeP);
-	if (EDGE_IDX (edgeP) > m_nLastEdge)
-		m_nLastEdge = EDGE_IDX (edgeP);
+	pEdge->verts [0] = va;
+	pEdge->verts [1] = vb;
+	pEdge->color = color;
+	pEdge->nFaces = 1;
+	pEdge->flags = EF_USED | EF_DEFINING;			// Assume a Normal line
+	pEdge->sides [0] = nSide;
+	pEdge->nSegment [0] = nSegment;
+	//Edge_used_list [m_nEdges] = EDGE_IDX (pEdge);
+	if (EDGE_IDX (pEdge) > m_nLastEdge)
+		m_nLastEdge = EDGE_IDX (pEdge);
 	m_nEdges++;
 	}
 else {
-	//Assert (edgeP->nFaces < 8);
+	//Assert (pEdge->nFaces < 8);
 	if ((color != m_colors.walls.nNormal) && (color != m_colors.walls.nRevealed))
-		edgeP->color = color;
-	if (edgeP->nFaces < 4) {
-		edgeP->sides [edgeP->nFaces] = nSide;
-		edgeP->nSegment [edgeP->nFaces] = nSegment;
-		edgeP->nFaces++;
+		pEdge->color = color;
+	if (pEdge->nFaces < 4) {
+		pEdge->sides [pEdge->nFaces] = nSide;
+		pEdge->nSegment [pEdge->nFaces] = nSegment;
+		pEdge->nFaces++;
 		}
 	}
 if (bGrate)
-	edgeP->flags |= EF_GRATE;
+	pEdge->flags |= EF_GRATE;
 if (bHidden)
-	edgeP->flags |= EF_SECRET;		// Mark this as a bHidden edge
+	pEdge->flags |= EF_SECRET;		// Mark this as a bHidden edge
 if (bNoFade)
-	edgeP->flags |= EF_NO_FADE;
+	pEdge->flags |= EF_NO_FADE;
 }
 
 //------------------------------------------------------------------------------
 
-void CAutomap::AddUnknownEdge (int va, int vb)
+void CAutomap::AddUnknownEdge (int32_t va, int32_t vb)
 {
 if (va == vb)
 	return;
 
-	tEdgeInfo *edgeP;
+	tEdgeInfo *pEdge;
 
 if (va > vb)
 	Swap (va, vb);
-if (FindEdge (va, vb, edgeP) != -1)
-	edgeP->flags |= EF_FRONTIER;		// Mark as a border edge
+if (FindEdge (va, vb, pEdge) != -1)
+	pEdge->flags |= EF_FRONTIER;		// Mark as a border edge
 }
 
 //------------------------------------------------------------------------------
 
-void CAutomap::AddSegmentEdges (CSegment *segP)
+void CAutomap::AddSegmentEdges (CSegment *pSeg)
 {
-	int		bIsGrate, bNoFade;
-	uint		color;
-	ubyte		nSide;
-	short		nSegment = segP->Index ();
-	int		bHidden;
-	ushort*	corners;
-	CSide*	sideP = segP->Side (0);
+	int32_t		bIsGrate, bNoFade;
+	uint32_t		color;
+	uint8_t		nSide;
+	int16_t		nSegment = pSeg->Index ();
+	int32_t		bHidden;
+	uint16_t*	corners;
+	CSide*	pSide = pSeg->Side (0);
 
-for (nSide = 0; nSide < SEGMENT_SIDE_COUNT; nSide++, sideP++) {
-	if (sideP->m_nShape > SIDE_SHAPE_TRIANGLE)
+for (nSide = 0; nSide < SEGMENT_SIDE_COUNT; nSide++, pSide++) {
+	if (pSide->m_nShape > SIDE_SHAPE_TRIANGLE)
 		continue;
 	bHidden = 0;
 	bIsGrate = 0;
 	bNoFade = 1;
 	color = WHITE_RGBA;
-	if (segP->m_children [nSide] == -1)
+	if (pSeg->m_children [nSide] == -1)
 		color = m_colors.walls.nNormal;
 
-	switch (segP->m_function) {
+	switch (pSeg->m_function) {
 		case SEGMENT_FUNC_FUELCENTER:
 			color = GOLD_RGBA;
 			break;
@@ -1383,7 +1432,7 @@ for (nSide = 0; nSide < SEGMENT_SIDE_COUNT; nSide++, sideP++) {
 			color = RGBA_PAL2 (0, 15, 31);
 			break;
 		case SEGMENT_FUNC_REACTOR:
-			if (gameData.reactor.bPresent)
+			if (gameData.reactorData.bPresent)
 				color = RGBA_PAL2 (29, 0, 0);
 			break;
 		case SEGMENT_FUNC_ROBOTMAKER:
@@ -1392,42 +1441,42 @@ for (nSide = 0; nSide < SEGMENT_SIDE_COUNT; nSide++, sideP++) {
 		case SEGMENT_FUNC_SKYBOX:
 			continue;
 		case SEGMENT_FUNC_NONE:
-			if (segP->HasBlockedProp ())
+			if (pSeg->HasBlockedProp ())
 				color = RGBA_PAL2 (13, 13, 13);
 		default:
 			bNoFade = 0;
 			break;
 		}
 
-	CWall* wallP = segP->Wall (nSide);
-	if (wallP) {
-		CTrigger* triggerP = wallP->Trigger ();
-		if (triggerP && (triggerP->m_info.nType == TT_SECRET_EXIT)) {
+	CWall* pWall = pSeg->Wall (nSide);
+	if (pWall) {
+		CTrigger* pTrigger = pWall->Trigger ();
+		if (pTrigger && (pTrigger->m_info.nType == TT_SECRET_EXIT)) {
 	 		color = RGBA_PAL2 (29, 0, 31);
 			bNoFade = 1;
 			goto addEdge;
 			}
-		switch (wallP->nType) {
+		switch (pWall->nType) {
 			case WALL_DOOR:
-				if (wallP->keys == KEY_BLUE) {
+				if (pWall->keys == KEY_BLUE) {
 					bNoFade = 1;
 					color = m_colors.walls.nDoorBlue;
 					}
-				else if (wallP->keys == KEY_GOLD) {
+				else if (pWall->keys == KEY_GOLD) {
 					bNoFade = 1;
 					color = m_colors.walls.nDoorGold;
 					}
-				else if (wallP->keys == KEY_RED) {
+				else if (pWall->keys == KEY_RED) {
 					bNoFade = 1;
 					color = m_colors.walls.nDoorRed;
 					}
-				else if (!(gameData.walls.animP [wallP->nClip].flags & WCF_HIDDEN)) {
-					short	nConnSeg = segP->m_children [nSide];
+				else if (!(gameData.wallData.pAnim [pWall->nClip].flags & WCF_HIDDEN)) {
+					int16_t	nConnSeg = pSeg->m_children [nSide];
 					if (nConnSeg != -1) {
-						short nConnSide = segP->ConnectedSide (SEGMENTS + nConnSeg);
-						CWall* connWallP = SEGMENTS [nConnSeg].Wall (nConnSide);
-						if (connWallP) {
-							switch (connWallP->keys) {
+						int16_t nConnSide = pSeg->ConnectedSide (SEGMENT (nConnSeg));
+						CWall* pConnWall = SEGMENT (nConnSeg)->Wall (nConnSide);
+						if (pConnWall) {
+							switch (pConnWall->keys) {
 								case KEY_BLUE:
 									color = m_colors.walls.nDoorBlue;
 									bNoFade = 1;
@@ -1453,7 +1502,7 @@ for (nSide = 0; nSide < SEGMENT_SIDE_COUNT; nSide++, sideP++) {
 				break;
 			case WALL_CLOSED:
 				// Make bGrates draw properly
-				if (segP->IsDoorWay (nSide, NULL) & WID_TRANSPARENT_FLAG)
+				if (pSeg->IsPassable (nSide, NULL) & WID_TRANSPARENT_FLAG)
 					bIsGrate = 1;
 				else
 					bHidden = 1;
@@ -1477,9 +1526,9 @@ for (nSide = 0; nSide < SEGMENT_SIDE_COUNT; nSide++, sideP++) {
 
 addEdge:
 
-		corners = SEGMENTS [nSegment].Corners (nSide);
-		int nCorners = sideP->CornerCount ();
-		for (int i = 0; i < nCorners; i++)
+		corners = SEGMENT (nSegment)->Corners (nSide);
+		int32_t nCorners = pSide->CornerCount ();
+		for (int32_t i = 0; i < nCorners; i++)
 			AddEdge (corners [i % nCorners], corners [(i + 1) % nCorners], color, nSide, nSegment, bHidden, 0, bNoFade);
 		if (bIsGrate && (nCorners == 4)) {
 			AddEdge (corners [0], corners [2], color, nSide, nSegment, bHidden, 1, bNoFade);
@@ -1492,16 +1541,16 @@ addEdge:
 //------------------------------------------------------------------------------
 // Adds all the edges from a CSegment we haven't visited yet.
 
-void CAutomap::AddUnknownSegmentEdges (CSegment* segP)
+void CAutomap::AddUnknownSegmentEdges (CSegment* pSeg)
 {
-for (int nSide = 0; nSide < SEGMENT_SIDE_COUNT; nSide++) {
+for (int32_t nSide = 0; nSide < SEGMENT_SIDE_COUNT; nSide++) {
 	// Only add edges that have no children
-	if (segP->Side (nSide)->m_nShape > SIDE_SHAPE_TRIANGLE)
+	if (pSeg->Side (nSide)->m_nShape > SIDE_SHAPE_TRIANGLE)
 		continue;
-	if (segP->m_children [nSide] == -1) {
-		ushort* vertices = segP->m_vertices;
-		int nVertices = segP->m_nVertices;
-		for (int i = 0; i <= nVertices; i++)
+	if (pSeg->m_children [nSide] == -1) {
+		uint16_t* vertices = pSeg->m_vertices;
+		int32_t nVertices = pSeg->m_nVertices;
+		for (int32_t i = 0; i <= nVertices; i++)
 			AddUnknownEdge (vertices [i], vertices [(i + 1) % nVertices]);
 		}
 	}
@@ -1511,7 +1560,7 @@ for (int nSide = 0; nSide < SEGMENT_SIDE_COUNT; nSide++) {
 
 void CAutomap::BuildEdgeList (void)
 {
-	int	i, e1, e2, nSegment;
+	int32_t	i, e1, e2, nSegment;
 	tEdgeInfo * e;
 
 m_data.bCheat = 0;
@@ -1528,26 +1577,26 @@ m_nLastEdge = -1;
 
 if (m_data.bCheat || (LOCALPLAYER.flags & PLAYER_FLAGS_FULLMAP)) {
 	// Cheating, add all edges as visited
-	for (nSegment = 0; nSegment <= gameData.segs.nLastSegment; nSegment++)
-		AddSegmentEdges (&SEGMENTS [nSegment]);
+	for (nSegment = 0; nSegment <= gameData.segData.nLastSegment; nSegment++)
+		AddSegmentEdges (SEGMENT (nSegment));
 	}
 else {
 	// Not cheating, add visited edges, and then unvisited edges
-	for (nSegment = 0; nSegment < gameData.segs.nSegments; nSegment++) {
+	for (nSegment = 0; nSegment < gameData.segData.nSegments; nSegment++) {
 #if DBG
 		if (nSegment == nDbgSeg)
-			nDbgSeg = nDbgSeg;
+			BRP;
 #endif
 		if (m_visited [nSegment]) 
-			AddSegmentEdges (&SEGMENTS [nSegment]);
+			AddSegmentEdges (SEGMENT (nSegment));
 		}
-	for (nSegment = 0; nSegment < gameData.segs.nSegments; nSegment++) {
+	for (nSegment = 0; nSegment < gameData.segData.nSegments; nSegment++) {
 #if DBG
 		if (nSegment == nDbgSeg)
-			nDbgSeg = nDbgSeg;
+			BRP;
 #endif
 		if (!m_visited [nSegment]) 
-			AddUnknownSegmentEdges (&SEGMENTS [nSegment]);
+			AddUnknownSegmentEdges (SEGMENT (nSegment));
 		}
 	}	
 
@@ -1560,8 +1609,8 @@ for (i = 0; i <= m_nLastEdge; i++) {
 	for (e1 = 0; e1 < e->nFaces; e1++) {
 		for (e2 = 1; e2 < e->nFaces; e2++) {
 			if ((e1 != e2) && (e->nSegment [e1] != e->nSegment [e2])) {
-				if (CFixVector::Dot (SEGMENTS [e->nSegment [e1]].m_sides [e->sides [e1]].m_normals [0],
-											SEGMENTS [e->nSegment [e2]].m_sides [e->sides [e2]].m_normals [0]) > (I2X (1)- (I2X (1)/10))) {
+				if (CFixVector::Dot (SEGMENT (e->nSegment [e1])->m_sides [e->sides [e1]].m_normals [0],
+											SEGMENT (e->nSegment [e2])->m_sides [e->sides [e2]].m_normals [0]) > (I2X (1)- (I2X (1)/10))) {
 					e->flags &= (~EF_DEFINING);
 					break;
 					}

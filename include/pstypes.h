@@ -20,37 +20,7 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #ifndef _PSTYPES_H
 #define _PSTYPES_H
 
-// define a dboolean
-typedef int dboolean;
-
-//define a signed byte
-typedef signed char sbyte;
-
-//define unsigned types;
-typedef unsigned char ubyte;
-#if !defined(__unix__) || defined(__FreeBSD__)
-typedef unsigned short ushort;
-typedef unsigned int uint;
-typedef unsigned long ulong;
-#endif
-
-#if defined(_WIN32) || defined(__sun__) // platforms missing (u_)int??_t
-# include <SDL_types.h>
-#endif
-#ifndef __MINGW32__
-#	if defined(_WIN32)// platforms missing int??_t
- 		typedef Sint16 int16_t;
- 		typedef Sint32 int32_t;
- 		typedef Sint64 int64_t;
-#	endif // defined(_WIN32)
-#endif
-#if 1//ndef __MINGW32__
-#	if defined(_WIN32) || defined(__sun__) // platforms missing u_int??_t
- 		typedef Uint16 u_int16_t;
- 		typedef Uint32 u_int32_t;
- 		typedef Uint64 u_int64_t;
-#	endif // defined(_WIN32) || defined(__sun__)
-#endif
+#include <stdint.h>
 
 #ifdef _WIN32
 # include <stdlib.h> // this is where minand max are defined
@@ -78,7 +48,7 @@ typedef unsigned long ulong;
 #endif
 
 #ifdef __macosx__
-#	define ushort ushort
+#	define uint16_t uint16_t
 #endif
 
 #ifndef NULL

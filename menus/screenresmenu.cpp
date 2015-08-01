@@ -52,6 +52,7 @@
 #include "renderthreads.h"
 #include "soundthreads.h"
 #include "menubackground.h"
+#include "gr.h"
 
 #if VR_NONE
 #   undef VR_NONE			//undef if != 0
@@ -63,13 +64,13 @@
 //------------------------------------------------------------------------------
 
 static struct {
-	int	nWideScreen;
-	int	nCustom;
+	int32_t	nWideScreen;
+	int32_t	nCustom;
 } screenResOpts;
 
 //------------------------------------------------------------------------------
 
-static int ScreenResMenuItemToMode (int menuItem)
+static int32_t ScreenResMenuItemToMode (int32_t menuItem)
 {
 if ((screenResOpts.nWideScreen >= 0) && (menuItem > screenResOpts.nWideScreen))
 	menuItem--;
@@ -78,11 +79,11 @@ return menuItem;
 
 //------------------------------------------------------------------------------
 
-static int ScreenResModeToMenuItem (int mode)
+static int32_t ScreenResModeToMenuItem (int32_t mode)
 {
-	int item = 0;
+	int32_t item = 0;
 
-for (int j = 0; j < mode; j++)
+for (int32_t j = 0; j < mode; j++)
 	if (displayModeInfo [j].bAvailable)
 		item++;
 if ((screenResOpts.nWideScreen >= 0) && (mode >= screenResOpts.nWideScreen))
@@ -92,12 +93,12 @@ return item;
 
 //------------------------------------------------------------------------------
 
-int ScreenResCallback (CMenu& menu, int& nKey, int nCurItem, int nState)
+int32_t ScreenResCallback (CMenu& menu, int32_t& nKey, int32_t nCurItem, int32_t nState)
 {
 if (nState)
 	return nCurItem;
 
-	int	h, i, j;
+	int32_t	h, i, j;
 
 if ((h = menu.IndexOf ("custom resolution")) && menu [h].Value () != (gameStates.video.nDisplayMode == CUSTOM_DISPLAY_MODE)) 
 	nKey = -2;
@@ -115,9 +116,12 @@ return nCurItem;
 
 //------------------------------------------------------------------------------
 
-int SwitchDisplayMode (int dir)
+int32_t SwitchDisplayMode (int32_t dir)
 {
-	int	i, h = NUM_DISPLAY_MODES;
+if (ogl.IsSideBySideDevice ())
+	return 0;
+
+	int32_t	i, h = NUM_DISPLAY_MODES;
 
 for (i = 0; i < h; i++)
 	displayModeInfo [i].bAvailable = ((i < 2) || gameStates.menus.bHiresAvailable) && GrVideoModeOK (displayModeInfo [i].dim);
@@ -143,13 +147,13 @@ void ScreenResMenu (void)
 #	define N_SCREENRES_ITEMS (NUM_DISPLAY_MODES + 4)
 
 	CMenu		m;
-	int		choice;
-	int		i, j, key, nCustW, nCustH, bStdRes;
+	int32_t		choice;
+	int32_t		i, j, key, nCustW, nCustH, bStdRes;
 	char		szMode [40];
 	char		cShortCut, szCustX [7], szCustY [7];
 
-if ((gameStates.video.nDisplayMode == -1) || (gameStates.render.vr.nRenderMode != VR_NONE)) {				//special VR mode
-	MsgBox (TXT_SORRY, NULL, 1, TXT_OK, "You may not change screen\nresolution when VR modes enabled.");
+if (gameStates.video.nDisplayMode == -1) {				//special VR mode
+	InfoBox (TXT_SORRY, (pMenuCallback) NULL, BG_STANDARD, 1, TXT_OK, "You may not change screen\nresolution when VR modes enabled.");
 	return;
 	}
 
@@ -206,18 +210,18 @@ do {
 		nCustH = m.ToInt ("custom height");
 		if ((0 < nCustW) && (0 < nCustH)) {
 			i = CUSTOM_DISPLAY_MODE;
-			if (SetCustomDisplayMode (nCustW, nCustH))
+			if (SetCustomDisplayMode (nCustW, nCustH, 1))
 				key = 0;
 			else
-				MsgBox (TXT_SORRY, NULL, 1, TXT_OK, TXT_ERROR_SCRMODE);
+				InfoBox (TXT_SORRY, (pMenuCallback) NULL, BG_STANDARD, 1, TXT_OK, TXT_ERROR_SCRMODE);
 			}
 		else
 			continue;
 		}
 	else 
 		{
-		int nCustom = m.IndexOf ("custom resolution");
-		int nWideScreen = m.IndexOf ("wide screen");
+		int32_t nCustom = m.IndexOf ("custom resolution");
+		int32_t nWideScreen = m.IndexOf ("wide screen");
 		for (i = 0; i <= nCustom; i++)
 			if ((i != nWideScreen) && (m [i].Value ())) {
 				bStdRes = 1;
@@ -226,7 +230,7 @@ do {
 				}
 		}
 	if (((i > 1) && !gameStates.menus.bHiresAvailable) || !GrVideoModeOK (displayModeInfo [i].dim)) {
-		MsgBox (TXT_SORRY, NULL, 1, TXT_OK, TXT_ERROR_SCRMODE);
+		InfoBox (TXT_SORRY, (pMenuCallback) NULL, BG_STANDARD, 1, TXT_OK, TXT_ERROR_SCRMODE);
 		return;
 		}
 	if (i != gameStates.video.nDisplayMode) {

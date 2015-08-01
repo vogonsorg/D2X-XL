@@ -58,13 +58,14 @@ class CFrustum {
 		CFixVector		m_normals [6];
 
 	void Compute (void);
-	bool Contains (CSide* sideP);
+	bool Contains (CSide* pSide);
 	};
 
 typedef struct tTransformation {
+	CFixVector		viewer;
 	CFixVector		pos;
 	CAngleVector	playerHeadAngles;
-	int				bUsePlayerHeadAngles;
+	int32_t			bUsePlayerHeadAngles;
 	CFixMatrix		view [2];
 	CFixVector		scale;
 	CFloatVector	scalef;
@@ -74,8 +75,8 @@ typedef struct tTransformation {
 	CFrustum			frustum;
 	CFloatMatrix	projection;
 	COGLMatrix		oglModelview;
-	COGLMatrix		oglProjection;
-	int				oglViewport [4];
+	COGLMatrix		oglProjection [2];
+	int32_t			oglViewport [4];
 	fix				zoom;
 	float				zoomf;
 	float				aspectRatio;
@@ -95,17 +96,17 @@ class CTransformation {
 		CTransformation () { Init (); }
 		void Init (void);
 		bool Push (void);
-		bool Pop (void);
-		void Begin (const CFixVector& vPos, CFixMatrix& mOrient);
-		_INLINE_ void Begin (const CFixVector& pos, const CAngleVector& angles) {
+		bool Pop (const char *pszFile = "", const int32_t nLine = 0);
+		void Begin (const CFixVector& vPos, CFixMatrix& mOrient, const char *pszFile, const int32_t nLine);
+		_INLINE_ void Begin (const CFixVector& pos, const CAngleVector& angles, const char *pszFile, const int32_t nLine) {
 			CFixMatrix m = CFixMatrix::Create (angles);
-			Begin (pos, m); 
+			Begin (pos, m, pszFile, nLine); 
 			}
-		_INLINE_ void Begin (const CFixVector& pos) {
+		_INLINE_ void Begin (const CFixVector& pos, const char *pszFile, const int32_t nLine) {
 			CFixMatrix m = CFixMatrix::IDENTITY;
-			Begin (pos, m); 
+			Begin (pos, m, pszFile, nLine); 
 			}
-		_INLINE_ void End (void) { Pop (); }
+		_INLINE_ void End (const char *pszFile, const int32_t nLine) { Pop (pszFile, nLine); }
 		_INLINE_ void Move (CFloatVector& v) { glTranslatef (-v.v.coord.x, -v.v.coord.y, -v.v.coord.z); }
 		_INLINE_ void Rotate (CFloatMatrix& m) { glMultMatrixf (m.m.vec); }
 
@@ -123,18 +124,18 @@ class CTransformation {
 		_INLINE_ CFixVector& Translate (CFixVector& dest, const CFixVector& src) 
 		 { return dest = src - m_info.pos; }
 
-		_INLINE_ CFixVector& Rotate (CFixVector& dest, const CFixVector& src, int bUnscaled = 0) 
+		_INLINE_ CFixVector& Rotate (CFixVector& dest, const CFixVector& src, int32_t bUnscaled = 0) 
 		 { return dest = m_info.view [bUnscaled] * src; }
 
-		_INLINE_ CFixVector& Transform (CFixVector& dest, const CFixVector& src, int bUnscaled = 0) {
+		_INLINE_ CFixVector& Transform (CFixVector& dest, const CFixVector& src, int32_t bUnscaled = 0) {
 			CFixVector vTrans = src - m_info.pos;
 			return dest = m_info.view [bUnscaled] * vTrans;
 			}
 
-		_INLINE_ CFloatVector& Rotate (CFloatVector& dest, const CFloatVector& src, int bUnscaled = 0) 
+		_INLINE_ CFloatVector& Rotate (CFloatVector& dest, const CFloatVector& src, int32_t bUnscaled = 0) 
 		 { return dest = m_info.viewf [bUnscaled] * src; }
 
-		_INLINE_ CFloatVector& Transform (CFloatVector& dest, const CFloatVector& src, int bUnscaled = 0) {
+		_INLINE_ CFloatVector& Transform (CFloatVector& dest, const CFloatVector& src, int32_t bUnscaled = 0) {
 			CFloatVector vTrans = src - m_info.posf [0];
 			return dest = m_info.viewf [bUnscaled] * vTrans;
 			}
@@ -142,14 +143,14 @@ class CTransformation {
 		_INLINE_ CFloatVector3& Translate (CFloatVector3& dest, const CFloatVector3& src) 
 		 { return dest = src - *m_info.posf [0].XYZ (); }
 
-		_INLINE_ CFloatVector3& Rotate (CFloatVector3& dest, const CFloatVector3& src, int bUnscaled = 0) { 
+		_INLINE_ CFloatVector3& Rotate (CFloatVector3& dest, const CFloatVector3& src, int32_t bUnscaled = 0) { 
 			CFloatVector vTemp;
 			vTemp.Assign (src);
 			dest.Assign (m_info.viewf [bUnscaled] * vTemp);
 			return dest;			
 			}
 
-		_INLINE_ CFloatVector3& Transform (CFloatVector3& dest, const CFloatVector3& src, int bUnscaled = 0) {
+		_INLINE_ CFloatVector3& Transform (CFloatVector3& dest, const CFloatVector3& src, int32_t bUnscaled = 0) {
 			CFloatVector v;
 			v.Assign (src - *m_info.posf [0].XYZ ());
 			dest.Assign (m_info.viewf [bUnscaled] * v);
@@ -162,18 +163,18 @@ class CTransformation {
 
 		const CFixVector& RotateScaled (CFixVector& dest, const CFixVector& src);
 
-		ubyte Codes (CFixVector& v);
+		uint8_t Codes (CFixVector& v);
 
-		_INLINE_ ubyte TransformAndEncode (CFixVector& dest, const CFixVector& src) {
+		_INLINE_ uint8_t TransformAndEncode (CFixVector& dest, const CFixVector& src) {
 			Transform (dest, src, 0);
 			return Codes (dest);
 			}
 
 		inline CFloatMatrix& Projection (void) { return m_info.projection; }
 
-		inline COGLMatrix& SystemMatrix (int i) { return m_sysMats [i + 3]; }
+		inline COGLMatrix& SystemMatrix (int32_t i) { return m_sysMats [i + 3]; }
 
-		void ComputeAspect (int nWidth = -1, int nHeight = -1);
+		void ComputeAspect (int32_t nWidth = -1, int32_t nHeight = -1);
 
 		void SetupProjection (float aspectRatio);
 
@@ -181,8 +182,9 @@ class CTransformation {
 
 		inline void ComputeFrustum (void) { Frustum ().Compute (); }
 
-		inline bool FrustumContains (CSide* sideP) { return Frustum ().Contains (sideP); }
+		inline bool FrustumContains (CSide* pSide) { return Frustum ().Contains (pSide); }
 
+		inline int32_t HaveHeadAngles (void) { return m_info.bUsePlayerHeadAngles && (m_info.playerHeadAngles.Mag () > 0.05f); }
 	};
 
 //------------------------------------------------------------------------------

@@ -28,7 +28,6 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 #include "pstypes.h"
 #include "u_mem.h"
 #include "strutil.h"
-#include "d_io.h"
 #include "error.h"
 #include "cfile.h"
 #include "hogfile.h"
@@ -39,35 +38,33 @@ COPYRIGHT 1993-1999 PARALLAX SOFTWARE CORPORATION.  ALL RIGHTS RESERVED.
 
 CHogFile hogFileManager;
 
-void MakeModFolders (const char* pszMission);
-
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 
 class CLevelHeader {
 	public:
-		int	m_size;
+		int32_t	m_size;
 		char	m_name [13];
 		char	m_longName [256];
-		int	m_bExtended;
+		int32_t	m_bExtended;
 
 	public:
-		explicit CLevelHeader (int bExtended = 0) : m_size (0), m_bExtended (bExtended) { m_name [0] = '\0'; m_longName [0] = '\0'; }
+		explicit CLevelHeader (int32_t bExtended = 0) : m_size (0), m_bExtended (bExtended) { m_name [0] = '\0'; m_longName [0] = '\0'; }
 
 		inline char* Name (void) { return m_bExtended ? m_longName : m_name; }
-		inline int NameSize (void) { return m_bExtended ? sizeof (m_longName) : sizeof (m_name); }
-		inline int Size (void) { return sizeof (m_size) + sizeof (m_name) + m_bExtended * sizeof (m_longName); }
-		inline int FileSize (void) { return m_bExtended ? -m_size : m_size; }
-		inline void SetFileSize (int size) { m_size = m_bExtended ? -size : size; }
-		inline int Extended (void) { return m_size < 0; }
+		inline int32_t NameSize (void) { return m_bExtended ? sizeof (m_longName) : sizeof (m_name); }
+		inline int32_t Size (void) { return sizeof (m_size) + sizeof (m_name) + m_bExtended * sizeof (m_longName); }
+		inline int32_t FileSize (void) { return m_bExtended ? -m_size : m_size; }
+		inline void SetFileSize (int32_t size) { m_size = m_bExtended ? -size : size; }
+		inline int32_t Extended (void) { return m_size < 0; }
 
-		int Read (FILE* fp);
+		int32_t Read (FILE* fp);
 	};
 
 //------------------------------------------------------------------------------
 
-int CLevelHeader::Read (FILE* fp) 
+int32_t CLevelHeader::Read (FILE* fp) 
 {
 if (fread (m_name, 1, sizeof (m_name), fp) != sizeof (m_name))
 	return 0;
@@ -85,9 +82,9 @@ return 1;
 //------------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 
-void CHogFile::QuickSort (tHogFile *hogFiles, int left, int right)
+void CHogFile::QuickSort (tHogFile *hogFiles, int32_t left, int32_t right)
 {
-	int		l = left,
+	int32_t		l = left,
 				r = right;
 	tHogFile	m = hogFiles [(l + r) / 2];
 
@@ -114,9 +111,9 @@ if (r > left)
 
 //------------------------------------------------------------------------------
 
-tHogFile *CHogFile::BinSearch (tHogFile *hogFiles, int nFiles, const char *pszFile)
+tHogFile *CHogFile::BinSearch (tHogFile *hogFiles, int32_t nFiles, const char *pszFile)
 {
-	int	i, m,
+	int32_t	i, m,
 			l = 0,
 			r = nFiles - 1;
 
@@ -134,14 +131,18 @@ return NULL;
 }
 
 // ----------------------------------------------------------------------------
-//returns 1 if file loaded with no errors
-int CHogFile::Setup (const char *pszFile, const char *folder, tHogFile *hogFiles, int *nFiles) 
+// fills the data structure pointed to by hogfiles with the level file names
+// found in the mission named *pszFile in folder *folder.
+// returns 1 if file loaded with no errors
+int32_t CHogFile::Setup (const char *pszFile, const char *folder, tHogFile *hogFiles, int32_t *nFiles) 
 {
 	FILE	*fp;
 	char	fn [FILENAME_LEN];
 
 if (*folder) {
-	sprintf (fn, "%s/%s", folder, pszFile);
+	char filename [FILENAME_LEN], extension [FILENAME_LEN];
+	CFile::SplitPath (pszFile, NULL, filename, extension);
+	sprintf (fn, "%s%s%s", folder, filename, extension);
 	pszFile = fn;
 	}
 *nFiles = 0;
@@ -160,7 +161,10 @@ if ((psz = strstr (pszFile, ".rdl")) || (psz = strstr (pszFile, ".rl2"))) {
 	}
 
 char sig [4];
-fread (sig, 3, 1, fp);
+if (fread (sig, 3, 1, fp) != 1) {
+	fclose (fp);
+	return 0;
+	}
 if (strncmp (sig, "DHF", 3) && strncmp (sig, "D2X", 3)) {
 	fclose (fp);
 	return 0;
@@ -184,22 +188,23 @@ for (;;) {
 	// Skip over
 	fseek (fp, lh.FileSize (), SEEK_CUR);
 	}
+return 0;
 }
 
 // ----------------------------------------------------------------------------
 
-int CHogFile::Use (tHogFileList *hogP, const char *name, const char *folder)
+int32_t CHogFile::Use (tHogFileList *pHogFiles, const char *name, const char *folder)
 {
-if (hogP->bInitialized)
+if (pHogFiles->bInitialized)
 	return 1;
 if (name) {
-	strcpy (hogP->szName, name);
-	strcpy (hogP->szFolder, folder ? folder : "");
-	hogP->bInitialized = *name && Setup (hogP->szName, folder, hogP->files, &hogP->nFiles);
-	if (*(hogP->szName))
-		PrintLog (0, "found hog file '%s'\n", hogP->szName);
-	if (hogP->bInitialized && (hogP->nFiles > 0)) {
-		QuickSort (hogP->files, 0, hogP->nFiles - 1);
+	strcpy (pHogFiles->szName, name);
+	strcpy (pHogFiles->szFolder, folder ? folder : "");
+	pHogFiles->bInitialized = *name && Setup (pHogFiles->szName, folder, pHogFiles->files, &pHogFiles->nFiles);
+	if (*(pHogFiles->szName))
+		PrintLog (0, "found hog file '%s'\n", pHogFiles->szName);
+	if (pHogFiles->bInitialized && (pHogFiles->nFiles > 0)) {
+		QuickSort (pHogFiles->files, 0, pHogFiles->nFiles - 1);
 		return 1;
 		}
 	} 
@@ -208,15 +213,15 @@ return 0;
 
 // ----------------------------------------------------------------------------
 
-int CHogFile::Reload (tHogFileList *hogP)
+int32_t CHogFile::Reload (tHogFileList *pHogFiles)
 {
-if (!*hogP->szName)
+if (!*pHogFiles->szName)
 	return 0;
-hogP->bInitialized = Setup (hogP->szName, hogP->szFolder, hogP->files, &hogP->nFiles);
-if (*(hogP->szName))
-	PrintLog (0, "found hog file '%s'\n", hogP->szName);
-if (hogP->bInitialized && (hogP->nFiles > 0)) {
-	QuickSort (hogP->files, 0, hogP->nFiles - 1);
+pHogFiles->bInitialized = Setup (pHogFiles->szName, pHogFiles->szFolder, pHogFiles->files, &pHogFiles->nFiles);
+if (*(pHogFiles->szName))
+	PrintLog (0, "found hog file '%s'\n", pHogFiles->szName);
+if (pHogFiles->bInitialized && (pHogFiles->nFiles > 0)) {
+	QuickSort (pHogFiles->files, 0, pHogFiles->nFiles - 1);
 	return 1;
 	} 
 return 0;
@@ -227,12 +232,12 @@ return 0;
 void CHogFile::UseAltDir (const char * path) 
 {
 gameFolders.bAltHogDirInited = 
-	 (strcmp (path, gameFolders.szDataDir [0]) != 0) && (GetAppFolder ("", gameFolders.szAltHogDir, path, "descent2.hog") == 0);
+	 (strcmp (path, gameFolders.game.szData [0]) != 0) && (GetAppFolder ("", gameFolders.game.szAltHogs, path, "descent2.hog") == 0);
 }
 
 // ----------------------------------------------------------------------------
 
-int CHogFile::UseMission (const char * name) 
+int32_t CHogFile::UseMission (const char * name) 
 {
 m_files.MsnHogFiles.bInitialized = 0;
 if (!Use (&m_files.MsnHogFiles, name, ""))
@@ -242,59 +247,65 @@ return 1;
 
 // ----------------------------------------------------------------------------
 
-int CHogFile::ReloadMission (void) 
+int32_t CHogFile::ReloadMission (const char * name) 
 {
+if (name && *name) {
+	strncpy (m_files.MsnHogFiles.szFolder, name, sizeof (m_files.MsnHogFiles.szFolder));
+	char filename [FILENAME_LEN], extension [FILENAME_LEN];
+	CFile::SplitPath (m_files.MsnHogFiles.szName, NULL, filename, extension);
+	sprintf (m_files.MsnHogFiles.szName, "%s%s", filename, extension);
+	}
 return Reload (&m_files.MsnHogFiles);
 }
 
 // ----------------------------------------------------------------------------
 
-int CHogFile::UseD2X (const char * name) 
+int32_t CHogFile::UseD2X (const char * name) 
 {
-return Use (&m_files.D2XHogFiles, name, gameFolders.szMissionDir);
+return Use (&m_files.D2XHogFiles, name, gameFolders.missions.szRoot);
 }
 
 // ----------------------------------------------------------------------------
 
-int CHogFile::UseXL (const char * name) 
+int32_t CHogFile::UseXL (const char * name) 
 {
-return Use (&m_files.XLHogFiles, name, gameFolders.szDataDir [0]);
+return Use (&m_files.XLHogFiles, name, gameFolders.game.szData [0]);
 }
 
 // ----------------------------------------------------------------------------
 
-int CHogFile::UseExtra (const char * name) 
+int32_t CHogFile::UseExtra (const char * name) 
 {
 return gameStates.app.bHaveExtraData = 
 	!gameStates.app.bNostalgia &&
-	Use (&m_files.ExtraHogFiles, name, gameFolders.szDataDir [0]);
+	Use (&m_files.ExtraHogFiles, name, gameFolders.game.szData [0]);
 }
 
 // ----------------------------------------------------------------------------
 
-int CHogFile::UseD1 (const char * name) 
+int32_t CHogFile::UseD1 (const char * name) 
 {
-return Use (&m_files.D1HogFiles, name, gameFolders.szDataDir [0]);
+return Use (&m_files.D1HogFiles, name, gameFolders.game.szData [0]);
 }
 
 // ----------------------------------------------------------------------------
 // return handle for file called "name", embedded in one of the hogfiles
 
-FILE *CHogFile::Find (tHogFileList *hogP, const char *folder, const char *name, int *length)
+FILE *CHogFile::Find (tHogFileList *pHogFiles, const char *folder, const char *name, int32_t *length)
 {
 	FILE		*fp;
 	tHogFile	*phf;
-	char		*hogFilename = hogP->szName;
+	char		*hogFilename = pHogFiles->szName;
   
-if (! (hogP->bInitialized && *hogFilename))
+if (! (pHogFiles->bInitialized && *hogFilename))
 	return NULL;
 if (*folder) {
 	char fn [FILENAME_LEN];
 
-	sprintf (fn, "%s/%s", folder, hogP->szName);
+	sprintf (fn, "%s%s", folder, pHogFiles->szName);
 	hogFilename = fn;
 	}
-if ((phf = BinSearch (hogP->files, hogP->nFiles, name))) {
+if ((phf = BinSearch (pHogFiles->files, pHogFiles->nFiles, name))) {
 	if (!(fp = CFile::GetFileHandle (hogFilename, "", "rb")))
 		return NULL;
 	fseek (fp, phf->offset, SEEK_SET);
@@ -307,24 +318,24 @@ return NULL;
 
 // ----------------------------------------------------------------------------
 
-FILE* CHogFile::Find (const char *name, int *length, int bUseD1Hog)
+FILE* CHogFile::Find (const char *name, int32_t *length, int32_t bUseD1Hog)
 {
 	FILE* fp;
   
 if ((fp = Find (&m_files.MsnHogFiles, "", name, length)))
 	return fp;
-if ((fp = Find (&m_files.XLHogFiles, gameFolders.szDataDir [0], name, length)))
+if ((fp = Find (&m_files.XLHogFiles, gameFolders.game.szData [0], name, length)))
 	return fp;
-if ((fp = Find (&m_files.ExtraHogFiles, gameFolders.szDataDir [0], name, length)))
+if ((fp = Find (&m_files.ExtraHogFiles, gameFolders.game.szData [0], name, length)))
 	return fp;
 if (bUseD1Hog) {
-	if ((fp = Find (&m_files.D1HogFiles, gameFolders.szDataDir [0], name, length)))
+	if ((fp = Find (&m_files.D1HogFiles, gameFolders.game.szData [0], name, length)))
 		return fp;
 	}
 else {
-	if ((fp = Find (&m_files.D2XHogFiles, gameFolders.szMissionDir, name, length)))
+	if ((fp = Find (&m_files.D2XHogFiles, gameFolders.missions.szRoot, name, length)))
 		return fp;
-	if ((fp = Find (&m_files.D2HogFiles, gameFolders.szDataDir [0], name, length)))
+	if ((fp = Find (&m_files.D2HogFiles, gameFolders.game.szData [0], name, length)))
 		return fp;
 	}
 return NULL;
@@ -332,7 +343,7 @@ return NULL;
 
 // ----------------------------------------------------------------------------
 //Specify the name of the tHogFile.  Returns 1 if tHogFile found & had files
-int CHogFile::Init (const char *pszHogName, const char *pszFolder)
+int32_t CHogFile::Init (const char *pszHogName, const char *pszFolder)
 {
 if (!*pszHogName) {
 	memset (&m_files, 0, sizeof (m_files));
